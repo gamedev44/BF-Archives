@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Galactic Starmap</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #000000;
+            font-family: 'Inter', sans-serif;
+            color: #ffffff;
+        }
+        canvas {
+            display: block;
+        }
+        .label {
+            color: #fff;
+            font-family: sans-serif;
+            padding: 2px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 4px;
+            pointer-events: none; /* Important so clicks pass through to the canvas */
+            font-size: 14px;
+        }
+        .region-label {
+            color: Black;
+            font-weight: bold;
+            text-shadow: 0 0 4px #ffc107, 0 0 8px #ffc107;
+            pointer-events: none;
+            transition: font-size 0.1s ease-out; /* Smooth scaling */
+        }
+        #modal {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 90%;
+            max-width: 500px;
+            background-color: rgba(10, 25, 47, 0.9);
+            border: 1px solid #38bdf8;
+            border-radius: 12px;
+            padding: 25px;
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.5);
+            display: none;
+            z-index: 100;
+            color: #e0f2fe;
+        }
+        #modal-content h2 {
+            margin-top: 0;
+            color: #f0f9ff;
+            font-size: 1.8rem;
+            border-bottom: 1px solid #38bdf8;
+            padding-bottom: 10px;
+        }
+        #modal-content p {
+            line-height: 1.6;
+            margin: 15px 0;
+        }
+        #modal-content strong {
+            color: #7dd3fc;
+        }
+        #close-modal, #explore-button {
+            padding: 10px 8px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        #close-modal {
+            position: absolute;
+            top: 15px;
+            right: 15px;
+            background: transparent;
+            color: #e0f2fe;
+            font-size: 24px;
+            padding: 0;
+        }
+        #close-modal:hover {
+            color: #ff4d4d;
+        }
+        #explore-button {
+            background-color: #38bdf8;
+            color: #0c1a2e;
+            display: block;
+            width: 100%;
+            margin-top: 20px;
+            text-align: center;
+            text-decoration: none;
+        }
+        #explore-button:hover {
+            background-color: #7dd3fc;
+            box-shadow: 0 0 15px rgba(125, 211, 252, 0.7);
+        }
+        #info-box {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(0,0,0,0.5);
+            padding: 10px;
+            border-radius: 5px;
+        }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div id="info-box">
+        Use your mouse to rotate (left-click & drag), pan (right-click & drag), and zoom (scroll).
+    </div>
+
+    <div id="modal">
+        <div id="modal-content">
+            <h2 id="planet-name"></h2>
+            <p id="planet-description"></p>
+            <p><strong>Major Landmarks:</strong> <span id="planet-landmarks"></span></p>
+            <p><strong>Controlling Faction:</strong> <span id="planet-faction"></span></p>
+            <p><strong>Status:</strong> <span id="planet-status"></span></p>
+            <p><strong>Native Species:</strong> <span id="planet-species"></span></p>
+            <a id="explore-button" href="#" target="_blank">Explore Further</a>
+        </div>
+        <button id="close-modal">&times;</button>
+    </div>
+
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+        camera.position.set(0, 250, 550);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new OrbitControls(camera, labelRenderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 5;
+        controls.maxDistance = 2000;
+        
+        // --- CELESTIAL DATABASE (EDIT COORDINATES HERE) ---
+        const planetData = [
+            // --- Core Worlds ---
+            { name: "Coruscant", position: new THREE.Vector3(25, 2, -30), info: { description: "An ecumenopolis, a city-covered planet, that for millennia served as the capital of the Republic and the Empire that followed.", landmarks: "Galactic Senate, Jedi Temple, Imperial Palace", faction: "Galactic Empire / New Republic", status: "Contested", species: "Human, various" } },
+            { name: "Corellia", position: new THREE.Vector3(32, 5, 25), info: { description: "A major shipbuilding world and the birthplace of many famous smugglers and pilots.", landmarks: "Coronet City, Shipyards of Corellia", faction: "Galactic Empire / Corellian Resistance", status: "Contested", species: "Human, Selonians, Drall" } },
+            // --- Colonies ---
+            { name: "Kuat", position: new THREE.Vector3(58, -5, -20), info: { description: "A vital industrial world, famed for its orbital shipyards, Kuat Drive Yards.", landmarks: "Kuat Drive Yards Orbital Array", faction: "Galactic Empire", status: "Hostile", species: "Human" } },
+            { name: "Hosnian Prime", position: new THREE.Vector3(5, 8, 90), info: { description: "The capital of the New Republic before its destruction by the First Order.", landmarks: "Republic Senate, Galactic Museum", faction: "New Republic (destroyed)", status: "Destroyed", species: "Various" } },
+            { name: "Takodana", position: new THREE.Vector3(-280, 10, 250), info: { description: "A lush, neutral world that was home to Maz Kanata's castle for over a thousand years.", landmarks: "Maz's Castle", faction: "Neutral", status: "Peaceful", species: "Various" } },
+            { name: "Ring of Kafrene", position: new THREE.Vector3(-100, 12, -150), info: { description: "An asteroid cluster and trading post in the Colonies region.", landmarks: "The Spire, Mining Tunnels", faction: "Galactic Empire (presence)", status: "Contested", species: "Various" } },
+            // --- Inner Rim ---
+            { name: "Onderon", position: new THREE.Vector3(150, 10, 10), info: { description: "A jungle world with a walled city, known for its fierce beasts and rebellious spirit.", landmarks: "Iziz (capital city)", faction: "Saw Gerrera's Partisans", status: "Contested", species: "Human" } },
+            { name: "Jakku", position: new THREE.Vector3(-250, -8, 50), info: { description: "A remote desert planet, site of a pivotal battle, littered with starship wreckage.", landmarks: "Starship Graveyard, Niima Outpost", faction: "Neutral", status: "Neutral", species: "Human, Teedo" } },
+            { name: "Jedha", position: new THREE.Vector3(-280, -5, -100), info: { description: "A small, cold desert moon, a spiritual center for believers in the Force, destroyed by the Death Star.", landmarks: "Temple of the Kyber, Holy City", faction: "Partisans (formerly)", status: "Destroyed", species: "Human, various pilgrims" } },
+            { name: "Dantooine", position: new THREE.Vector3(20, 20, 220), info: { description: "A sparsely populated world of savannas, once home to a Rebel Alliance base.", landmarks: "Abandoned Rebel Base, Dantari villages", faction: "Neutral", status: "Peaceful", species: "Human, Dantari" } },
+            { name: "Lah'mu", position: new THREE.Vector3(100, -12, 240), info: { description: "A remote world with black sand beaches where Galen Erso's family hid from the Empire.", landmarks: "Erso Homestead", faction: "Neutral", status: "Neutral", species: "None" } },
+            { name: "Ajilon Kloss", position: new THREE.Vector3(90, 25, 180), info: { description: "A jungle world that served as a temporary base for the Resistance.", landmarks: "Resistance Base", faction: "Resistance", status: "Peaceful", species: "None specified" } },
+            // --- Expansion Region ---
+            { name: "Mimban", position: new THREE.Vector3(120, -8, -150), info: { description: "A swampy, fog-shrouded world known for its Imperial mining operations and fierce local resistance.", landmarks: "Imperial Mining Complex", faction: "Galactic Empire", status: "Hostile", species: "Mimbanese" } },
+            { name: "Pasaana", position: new THREE.Vector3(250, 5, -280), info: { description: "A desert planet known for its vibrant Festival of the Ancestors.", landmarks: "Forbidden Valley, Festival Grounds", faction: "Neutral", status: "Peaceful", species: "Aki-Aki, Human" } },
+            // --- Mid Rim ---
+            { name: "Naboo", position: new THREE.Vector3(250, 20, 400), info: { description: "A lush, idyllic world known for its peaceful human population and the amphibious Gungans.", landmarks: "Theed Royal Palace, Otoh Gunga", faction: "Galactic Empire (nominal), local resistance", status: "Peaceful", species: "Human, Gungan" } },
+            { name: "Malastare", position: new THREE.Vector3(50, -10, -500), info: { description: "A dusty world, home to the Dug species and rich in fuel reserves.", landmarks: "Sebulba's Podracing Track", faction: "Various criminal elements", status: "Hostile", species: "Dug, Gran" } },
+            { name: "Kashyyyk", position: new THREE.Vector3(250, -15, -350), info: { description: "The temperate forest homeworld of the Wookiees.", landmarks: "Kachirho, Thicket of Meditation", faction: "Wookiee Resistance", status: "Peaceful (to allies)", species: "Wookiee" } },
+            { name: "Ord Mantell", position: new THREE.Vector3(-100, 18, 280), info: { description: "A planet of junk fields, a haven for bounty hunters and smugglers.", landmarks: "Junkyard Scrapyards, Port of Ord Mantell", faction: "Criminal Underworld", status: "Hostile", species: "Various" } },
+            { name: "Ithor", position: new THREE.Vector3(-50, 25, 230), info: { description: "A jungle planet, home to the peaceful Ithorians who live in floating herd-ships.", landmarks: "Tafanda Bay, Herd Ships", faction: "Ithorian Government", status: "Peaceful", species: "Ithorian" } },
+            { name: "Dathomir", position: new THREE.Vector3(50, 0, 290), info: { description: "A remote, red-tinged world steeped in the dark side, home to the Nightsisters.", landmarks: "Nightsister Fortress, Nightbrother Village", faction: "Nightsisters / Nightbrothers", status: "Hostile", species: "Zabrak (Nightbrother), Dathomirian (Nightsister)" } },
+            { name: "Mandalore", position: new THREE.Vector3(200, 10, 250), info: { description: "Homeworld of the Mandalorians. Its surface was devastated, forcing its people into domed cities.", landmarks: "Sundari (capital), Mines of Mandalore", faction: "Mandalorian Clans", status: "Contested", species: "Human (Mandalorian)" } },
+            { name: "Wobani", position: new THREE.Vector3(300, -5, 300), info: { description: "A bleak world used by the Empire as the site of a labor camp.", landmarks: "Imperial Penal Colony", faction: "Galactic Empire", status: "Hostile", species: "Various" } },
+            { name: "Lothal", position: new THREE.Vector3(400, 8, 380), info: { description: "An Outer Rim world of grassy plains that became a focal point for early Rebel activity.", landmarks: "Capital City, Jedi Temple", faction: "Rebel Alliance / Galactic Empire", status: "Contested", species: "Human, Loth-cat" } },
+            { name: "Kijimi", position: new THREE.Vector3(380, 15, 200), info: { description: "A mountainous, snow-covered planet, a haven for smugglers, destroyed by the First Order.", landmarks: "Thieves' Quarter, Spice Den of Zorii Bliss", faction: "Spice Runners of Kijimi", status: "Destroyed", species: "Human, various" } },
+            { name: "Eadu", position: new THREE.Vector3(350, -20, 100), info: { description: "A storm-wracked, mountainous world with a secret Imperial kyber crystal research facility.", landmarks: "Imperial Energy Research Facility", faction: "Galactic Empire", status: "Hostile", species: "None" } },
+            { name: "Kessel", position: new THREE.Vector3(300, 0, 50), info: { description: "A prison planet where the Empire mined valuable spice from its dangerous tunnels.", landmarks: "Spice Mines of Kessel, Kessel Run maw", faction: "Pyke Syndicate / Galactic Empire", status: "Hostile", species: "Various prisoners" } },
+            { name: "Nal Hutta", position: new THREE.Vector3(280, -10, -50), info: { description: "The polluted, swampy homeworld of the Hutts, capital of their criminal empire.", landmarks: "Gardulla's Palace, Bilbousa Bazaar", faction: "Hutt Cartel", status: "Hostile", species: "Hutt" } },
+            { name: "Vandor", position: new THREE.Vector3(290, -12, -200), info: { description: "A rugged, mountainous planet with a cold climate, site of the 'Conveyex' train heist.", landmarks: "Fort Ypso, Imperial Train Line", faction: "Crimson Dawn / Galactic Empire", status: "Contested", species: "Various" } },
+            { name: "Sinta", position: new THREE.Vector3(280, -14, -100), info: { description: "A planet in the Mid Rim.", landmarks: "Unknown", faction: "Unknown", status: "Unknown", species: "Unknown" } },
+            { name: "Yavin", position: new THREE.Vector3(250, 30, 350), info: { description: "A gas giant with several moons, the fourth of which housed the headquarters of the Rebel Alliance.", landmarks: "Great Temple (Massassi)", faction: "Rebel Alliance (formerly)", status: "Neutral", species: "Woolamander" } },
+            { name: "Moraband", position: new THREE.Vector3(350, 40, 450), info: { description: "The ancient homeworld of the Sith, a desolate planet of red rock covered in the tombs of Dark Lords.", landmarks: "Valley of the Dark Lords", faction: "None (Sith spirits)", status: "Hostile (Dark Side energy)", species: "Sith Species (extinct)" } },
+            { name: "Felucia", position: new THREE.Vector3(480, 22, 500), info: { description: "A vibrant, fungal jungle world teeming with colorful, and often dangerous, flora and fauna.", landmarks: "Ancient Abyss, Nigkoe Swamp", faction: "Neutral (wild)", status: "Hostile (environment)", species: "Felucian" } },
+            { name: "Cantonica", position: new THREE.Vector3(550, 25, 480), info: { description: "A desert world, home to the casino city of Canto Bight.", landmarks: "Canto Bight Casino", faction: "Neutral (wealthy elite)", status: "Neutral", species: "Various" } },
+            // --- Outer Rim ---
+            { name: "Tatooine", position: new THREE.Vector3(300, 5, -550), info: { description: "A harsh desert world in the Outer Rim, orbiting two suns. A haven for smugglers and criminals.", landmarks: "Mos Eisley Spaceport, Jabba's Palace, Lars Homestead", faction: "Hutt Cartel", status: "Hostile", species: "Human, Jawa, Tusken Raider" } },
+            { name: "Geonosis", position: new THREE.Vector3(250, -15, -600), info: { description: "A rocky, arid world, home to the insectoid Geonosians who built droids for the Separatists.", landmarks: "Petranaki Arena, Droid Factories", faction: "Separatist Alliance (formerly)", status: "Neutral (sterilized)", species: "Geonosian" } },
+            { name: "Scarif", position: new THREE.Vector3(350, 10, -450), info: { description: "A tropical world, the Empire's primary archival facility for top-secret projects like the Death Star.", landmarks: "Citadel Tower, Imperial Security Complex", faction: "Galactic Empire", status: "Destroyed", species: "Human" } },
+            { name: "Savareen", position: new THREE.Vector3(200, -5, -680), info: { description: "A desert planet with vast oceans, known for its production of unrefined coaxium.", landmarks: "Coaxium Refinery", faction: "Crimson Dawn", status: "Hostile", species: "Human" } },
+            { name: "D'Qar", position: new THREE.Vector3(240, 20, 470), info: { description: "A lush, green world that housed the main base of the Resistance.", landmarks: "Resistance Base", faction: "Resistance (formerly)", status: "Neutral", species: "None" } },
+            { name: "Crait", position: new THREE.Vector3(0, 0, -650), info: { description: "A mineral world with a salt surface over red soil, site of an old Rebel outpost.", landmarks: "Abandoned Rebel Outpost", faction: "Resistance", status: "Contested", species: "Vulptex" } },
+            { name: "Sullust", position: new THREE.Vector3(-100, -20, -600), info: { description: "A barren, volcanic world, its inhabitants, the Sullustans, live in subterranean cities.", landmarks: "Sorosuub Corporation Headquarters", faction: "Rebel Alliance / Sullustan Government", status: "Peaceful", species: "Sullustan" } },
+            { name: "Bespin", position: new THREE.Vector3(-350, 25, -650), info: { description: "A gas giant known for the Tibanna gas mining colony, Cloud City.", landmarks: "Cloud City, Tibanna Gas Mines", faction: "Cloud City Administration", status: "Contested", species: "Human, Ugnaught" } },
+            { name: "Hoth", position: new THREE.Vector3(-450, 30, -600), info: { description: "An icy, remote planet that was chosen by the Rebel Alliance for a hidden base.", landmarks: "Echo Base", faction: "Rebel Alliance (formerly)", status: "Neutral (uninhabited)", species: "Tauntaun, Wampa" } },
+            { name: "Mustafar", position: new THREE.Vector3(80, 0, 680), info: { description: "A fiery volcanic world rich in minerals, used by the Separatists and later Darth Vader.", landmarks: "Vader's Castle, Klegger Corp Mining Facility", faction: "Galactic Empire", status: "Hostile", species: "Mustafarian" } },
+            { name: "Dagobah", position: new THREE.Vector3(-150, -25, -700), info: { description: "A swamp-covered planet, shrouded in the dark side of the Force, where Jedi Master Yoda lived in exile.", landmarks: "Yoda's Hut, Dark Side Cave", faction: "None", status: "Neutral", species: "Various swamp creatures" } },
+            { name: "Utapau", position: new THREE.Vector3(-50, -30, -750), info: { description: "An arid world of enormous sinkholes, within which its inhabitants built their cities.", landmarks: "Pau City, Separatist Command Center", faction: "Neutral", status: "Peaceful", species: "Pau'an, Utai" } },
+            { name: "Endor", position: new THREE.Vector3(-280, 10, 370), info: { description: "A forest moon, homeworld of the Ewoks, and site of the second Death Star's shield generator.", landmarks: "Bright Tree Village, Shield Generator Bunker", faction: "Ewok tribes", status: "Peaceful", species: "Ewok" } },
+            { name: "Kef Bir", position: new THREE.Vector3(-270, 10, 395), info: { description: "An ocean moon of Endor, covered in grassy plains and rocky mesas, where wreckage of the second Death Star fell.", landmarks: "Death Star Wreckage", faction: "Neutral", status: "Neutral", species: "Human (Company of exiled stormtroopers)" } },
+            { name: "Bothawui", position: new THREE.Vector3(400, 5, -200), info: { description: "The homeworld of the Bothans, known for their galaxy-wide spy network.", landmarks: "Bothan Spynet Headquarters", faction: "Bothan Spynet / New Republic", status: "Peaceful", species: "Bothan" } },
+            // --- Unknown Regions ---
+            { name: "Exegol", position: new THREE.Vector3(-500, -50, -200), info: { description: "A dark, desolate world deep within the Unknown Regions, a hidden stronghold of the Sith.", landmarks: "Sith Citadel, Throne of the Sith", faction: "Sith Eternal", status: "Hostile", species: "Sith Cultists" } },
+            { name: "Ahch-To", position: new THREE.Vector3(-600, 40, 200), info: { description: "A remote, ocean world, site of the first Jedi Temple and Luke Skywalker's exile.", landmarks: "First Jedi Temple, Jedi Village", faction: "None", status: "Neutral", species: "Porg, Caretakers" } },
+            { name: "Batuu", position: new THREE.Vector3(-400, 10, 250), info: { description: "A remote outpost on the edge of the galaxy, a crossroads for smugglers and adventurers.", landmarks: "Black Spire Outpost", faction: "Neutral", status: "Neutral", species: "Various" } },
+        ];
+        
+        const regionData = [
+            { name: 'CORE', radius: 60, position: new THREE.Vector3(0, 10, 0) }, 
+            { name: 'COLONIES', radius: 120, position: new THREE.Vector3(100, 15, 100) },
+            { name: 'INNER RIM', radius: 250, position: new THREE.Vector3(170, -30, -200) }, 
+            { name: 'EXPANSION REGION', radius: 320, position: new THREE.Vector3(320, 45, 0) },
+            { name: 'MID RIM', radius: 500, position: new THREE.Vector3(400, -60, 300) }, 
+            { name: 'OUTER RIM', radius: 750, position: new THREE.Vector3(450, 80, 600) },
+            { name: 'UNKNOWN REGIONS', radius: 0, position: new THREE.Vector3(-800, 30, 50) } // Radius 0 as it has no ring
+        ];
+
+        // --- GALAXY CREATION ---
+        
+        const kaminoPosition = new THREE.Vector3(-900, -50, 220);
+        const kaminoVoidRadius = 40;
+        const kaminoStarDensityRadius = 70;
+
+        const galaxyStarVertices = [];
+        const numGalaxyStars = 58000; // Main galaxy stars
+        const galaxyRadius = 700;
+        const galaxyArms = 4;
+        const armTightness = 0.5;
+
+        for (let i = 0; i < numGalaxyStars; i++) {
+            const pos = new THREE.Vector3();
+            const angle = (i % (numGalaxyStars / galaxyArms)) / (numGalaxyStars / galaxyArms) * Math.PI * 2;
+            const distance = Math.pow(Math.random(), 2) * galaxyRadius;
+            const spiral = angle * armTightness;
+            const armIndex = Math.floor(i / (numGalaxyStars / galaxyArms));
+            const armAngle = (armIndex / galaxyArms) * Math.PI * 2;
+            pos.x = Math.cos(angle + spiral + armAngle) * distance;
+            const y_bulge = (Math.random() - 0.5) * 120 * Math.pow(1 - distance / galaxyRadius, 2);
+            const y_disk = (Math.random() - 0.5) * 15;
+            pos.y = y_bulge + y_disk;
+            pos.z = Math.sin(angle + spiral + armAngle) * distance;
+            
+            galaxyStarVertices.push(pos.x, pos.y, pos.z);
+        }
+
+        const starGeometry = new THREE.BufferGeometry();
+        starGeometry.setAttribute('position', new THREE.Float32BufferAttribute(galaxyStarVertices, 3));
+        const starMaterial = new THREE.PointsMaterial({ color: 0xffffff, size: 0.7, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+        const starfield = new THREE.Points(starGeometry, starMaterial);
+        scene.add(starfield);
+
+        // Create the Kamino Cluster as a separate object
+        const kaminoStarVertices = [];
+        const numKaminoStars = 44;
+        for (let i = 0; i < numKaminoStars; i++) {
+            const pos = new THREE.Vector3();
+            const dist = THREE.MathUtils.randFloat(kaminoVoidRadius, kaminoStarDensityRadius);
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos((Math.random() * 2) - 1);
+
+            pos.x = dist * Math.sin(phi) * Math.cos(theta);
+            pos.y = dist * Math.sin(phi) * Math.sin(theta) * 0.7; // Make it a bit flatter
+            pos.z = dist * Math.cos(phi);
+            
+            kaminoStarVertices.push(pos.x, pos.y, pos.z);
+        }
+
+        const kaminoGeometry = new THREE.BufferGeometry();
+        kaminoGeometry.setAttribute('position', new THREE.Float32BufferAttribute(kaminoStarVertices, 3));
+        const kaminoMaterial = new THREE.PointsMaterial({ color: 0xaaccff, size: 0.8, transparent: true, opacity: 0.9, blending: THREE.AdditiveBlending });
+        const kaminoCluster = new THREE.Points(kaminoGeometry, kaminoMaterial);
+        kaminoCluster.position.copy(kaminoPosition); // Move the entire cluster to its location
+        scene.add(kaminoCluster);
+
+
+        const coreGeometry = new THREE.SphereGeometry(40, 32, 32);
+        const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xffeab3, transparent: true, opacity: 0.8 });
+        const core = new THREE.Mesh(coreGeometry, coreMaterial);
+        scene.add(core);
+        
+        const coreGlow = new THREE.PointLight(0xffeab3, 2, 800);
+        coreGlow.position.set(0,0,0);
+        scene.add(coreGlow);
+
+        const regionLabels = [];
+        
+        regionData.forEach(region => {
+            if (region.radius > 0) {
+                const geometry = new THREE.RingGeometry(region.radius - 1, region.radius, 128);
+                const material = new THREE.MeshBasicMaterial({ color: 0xffc107, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.rotation.x = Math.PI / 2;
+                scene.add(mesh);
+            }
+            
+            const text = document.createElement('div');
+            text.className = 'region-label';
+            text.textContent = region.name;
+            const label = new CSS2DObject(text);
+            label.position.copy(region.position);
+            scene.add(label);
+            regionLabels.push(label);
+        });
+
+        const planetMeshes = [];
+        const planetMaterial = new THREE.MeshStandardMaterial({ color: 0x38bdf8, emissive: 0x38bdf8, emissiveIntensity: 2 });
+        const planetGeometry = new THREE.SphereGeometry(3, 16, 16);
+
+        planetData.forEach(p => {
+            const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial.clone());
+            planetMesh.position.copy(p.position);
+            planetMesh.userData = p;
+            scene.add(planetMesh);
+            planetMeshes.push(planetMesh);
+
+            const text = document.createElement('div');
+            text.className = 'label';
+            text.textContent = p.name;
+            const label = new CSS2DObject(text);
+            label.position.copy(p.position);
+            label.position.y += 8;
+            scene.add(label);
+        });
+
+        // --- INTERACTIVITY ---
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        
+        function onMouseClick(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(planetMeshes);
+            if (intersects.length > 0) {
+                const clickedPlanetData = intersects[0].object.userData;
+                showModal(clickedPlanetData);
+            }
+        }
+        
+        window.addEventListener('click', onMouseClick);
+        
+        const modal = document.getElementById('modal');
+        const closeModalButton = document.getElementById('close-modal');
+
+        function showModal(data) {
+            document.getElementById('planet-name').textContent = data.name;
+            document.getElementById('planet-description').textContent = data.info.description;
+            document.getElementById('planet-landmarks').textContent = data.info.landmarks;
+            document.getElementById('planet-faction').textContent = data.info.faction;
+            document.getElementById('planet-status').textContent = data.info.status;
+            document.getElementById('planet-species').textContent = data.info.species;
+            
+            const exploreButton = document.getElementById('explore-button');
+            // --- CHANGE: Updated href to match local file structure ---
+            const planetNameNoSpaces = data.name.replace(/[\s']/g, '');
+            exploreButton.href = `Databases/Planets Info/${planetNameNoSpaces}/${planetNameNoSpaces}GALdb.html`;
+            
+            modal.style.display = 'block';
+        }
+
+        function hideModal() {
+            modal.style.display = 'none';
+        }
+
+        closeModalButton.addEventListener('click', hideModal);
+        window.addEventListener('click', (event) => {
+            if (event.target === modal) { hideModal(); }
+        });
+
+        // --- RENDER LOOP ---
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+
+            starfield.rotation.y += 0.0001; 
+            kaminoCluster.rotation.y += 0.0005;
+            
+            const cameraPosition = new THREE.Vector3();
+            camera.getWorldPosition(cameraPosition);
+
+            regionLabels.forEach(label => {
+                const labelPosition = new THREE.Vector3();
+                label.getWorldPosition(labelPosition);
+                const distance = cameraPosition.distanceTo(labelPosition);
+                const baseSize = 20;
+                const scaleFactor = 3000;
+                let newSize = baseSize * (scaleFactor / distance);
+                newSize = Math.max(8, Math.min(newSize, 30)); 
+                label.element.style.fontSize = `${newSize}px`;
+            });
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+               
+        
+        // --- RESIZE HANDLING ---
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        animate();
+    </script>
+</body>
+</html>
