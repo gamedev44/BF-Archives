@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Loading...</title>
+  <style>
+    body {
+      margin: 0;
+      background: #000;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100vh;
+      font-family: Arial, sans-serif;
+      overflow: hidden;
+    }
+
+    /* Center title text */
+    .title {
+      position: absolute;
+      top: 40%;
+      text-align: center;
+      font-size: 24px;
+      font-weight: bold;
+      color: yellow;
+      text-shadow: 0 0 8px #ff0;
+    }
+
+    /* Saber bar */
+    .saber-container {
+      position: relative;
+      width: 400px;
+      height: 20px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 10px;
+      overflow: hidden;
+      margin-top: 60px;
+    }
+
+    .saber {
+      height: 100%;
+      width: 0%;
+      background: linear-gradient(90deg, #00f, #4af, #fff);
+      box-shadow: 0 0 20px #4af;
+      transition: width 0.1s;
+    }
+
+    .hilt {
+      position: absolute;
+      left: -50px;
+      top: -10px;
+      width: 40px;
+      height: 40px;
+      background: url('a05aa11a-eaec-4e2d-a9e7-819d877a85da.png') no-repeat center/contain;
+    }
+
+    .loading-text {
+      margin-top: 15px;
+      font-size: 18px;
+    }
+
+    /* Bottom corner loader */
+    .loader_wrapper {
+      display: inline-block;
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      filter: drop-shadow(0 0 1px yellow);
+    }
+
+    .loader {
+      width: 80px;
+      height: 80px;
+      animation: flip 2s linear infinite;
+    }
+
+    .loader path {
+      stroke: black;
+      stroke-width: 30;
+      fill: transparent;
+      stroke-dasharray: 100px 5px;
+      animation: spin 1s ease-in-out infinite alternate;
+    }
+
+    .loader_wrapper .text {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 14px;
+      font-family: arial;
+      color: yellow;
+      text-shadow: 1px 1px 1px black;
+      animation: blink 1s ease infinite;
+    }
+
+    @keyframes spin {
+      0% { stroke-dashoffset: 500; opacity: .5; }
+      100% { stroke-dashoffset: 0; opacity: 1; }
+    }
+
+    @keyframes flip {
+      0% { transform: rotateY(0deg); }
+      100% { transform: rotateY(1080deg); }
+    }
+
+    @keyframes blink {
+      0% { opacity: .5; }
+      50% { opacity: 1; }
+      100% { opacity: .5; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Center Title -->
+  <div class="title">Star Wars BFR Companion Web Archives</div>
+
+  <!-- Lightsaber loader -->
+  <div class="saber-container">
+    <div class="hilt"></div>
+    <div class="saber" id="saber"></div>
+  </div>
+  <div class="loading-text" id="loading-text">Loading 0%</div>
+
+  <!-- Corner Loader -->
+  <span class="loader_wrapper">
+    <svg viewBox="-50 -50 700 700" class="loader" xmlns="http://www.w3.org/2000/svg">
+      <g><g id="l1">
+        <path fill="#000" d="m299.99999,0c-165.59998,0 -299.99998,134.40004 -299.99998,300.00004c0,165.6 134.39998,300.00004 299.99998,300c165.6,0 300.00002,-134.39996 300.00002,-300c0,-165.60002 -134.40002,-300.00004 -300.00002,-300.00004z"/>
+      </g></g>
+    </svg>
+    <span class="text">Loading</span>
+  </span>
+
+  <script>
+    let progress = 0;
+    const saber = document.getElementById('saber');
+    const loadingText = document.getElementById('loading-text');
+
+    const interval = setInterval(() => {
+      progress += 2;
+      saber.style.width = progress + "%";
+      loadingText.textContent = "Loading " + progress + "%";
+      if (progress >= 100) {
+        clearInterval(interval);
+        setTimeout(() => {
+          window.location.href = "GalacticStarMap.html";
+        }, 500);
+      }
+    }, 100);
+  </script>
+</body>
+</html>
