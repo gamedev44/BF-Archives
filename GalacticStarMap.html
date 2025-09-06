@@ -45,11 +45,12 @@
         .label {
             color: #fff;
             font-family: sans-serif;
-            padding: 2px;
+            padding: 2px 5px;
             background: rgba(0, 0, 0, 0.6);
             border-radius: 4px;
             pointer-events: none; /* Important so clicks pass through to the canvas */
             font-size: 14px;
+            white-space: nowrap;
         }
         .region-label {
             color: #ffc107;
@@ -124,13 +125,111 @@
         }
         #info-box {
             position: absolute;
-            top: 10px;
+            bottom: 10px;
             left: 10px;
             background: rgba(0,0,0,0.5);
             padding: 10px;
             border-radius: 5px;
             z-index: 10;
+            max-width: 250px;
+            font-size: 12px;
         }
+
+        /* --- New Search & Filter Styles --- */
+        #search-container {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 90%;
+            max-width: 500px;
+            z-index: 150;
+        }
+        #search-input {
+            width: 100%;
+            padding: 15px 20px;
+            background-color: rgba(10, 25, 47, 0.8);
+            border: 1px solid #38bdf8;
+            color: #e0f2fe;
+            border-radius: 50px;
+            font-size: 16px;
+            outline: none;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(56, 189, 248, 0.3);
+            box-sizing: border-box;
+        }
+        #search-input:focus {
+            box-shadow: 0 0 25px rgba(56, 189, 248, 0.7);
+            background-color: rgba(10, 25, 47, 0.95);
+        }
+        #search-suggestions {
+            background-color: rgba(10, 25, 47, 0.95);
+            border: 1px solid #38bdf8;
+            border-top: none;
+            border-radius: 0 0 12px 12px;
+            margin-top: -10px;
+            padding-top: 10px;
+            max-height: 300px;
+            overflow-y: auto;
+            display: none; /* Hidden by default */
+        }
+        .suggestion-item {
+            padding: 12px 20px;
+            color: #e0f2fe;
+            cursor: pointer;
+            border-bottom: 1px solid rgba(56, 189, 248, 0.2);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .suggestion-item:last-child {
+            border-bottom: none;
+        }
+        .suggestion-item:hover {
+            background-color: #38bdf8;
+            color: #0c1a2e;
+        }
+        .suggestion-item .type {
+            font-size: 0.8em;
+            color: #9ca3af;
+            text-transform: capitalize;
+        }
+        .suggestion-item:hover .type {
+            color: #1e3a5f;
+        }
+
+        #filter-controls {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 15px;
+            border-radius: 8px;
+            z-index: 10;
+            border: 1px solid #334155;
+        }
+        #filter-controls h4 {
+            margin: 0 0 10px 0;
+            color: #7dd3fc;
+            font-size: 16px;
+            text-align: center;
+            border-bottom: 1px solid #334155;
+            padding-bottom: 5px;
+        }
+        #filter-controls div {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        #filter-controls label {
+            margin-left: 8px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        #filter-controls input {
+            cursor: pointer;
+        }
+
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
 </head>
@@ -141,6 +240,20 @@
 
     <div id="info-box">
         Use your mouse to rotate (left-click & drag), pan (right-click & drag), and zoom (scroll).
+    </div>
+    
+    <div id="search-container">
+        <input type="text" id="search-input" placeholder="Search for a celestial body...">
+        <div id="search-suggestions"></div>
+    </div>
+
+    <div id="filter-controls">
+        <h4>Filter Map</h4>
+        <div><input type="checkbox" id="filter-suns" data-type="sun" checked><label for="filter-suns">Suns</label></div>
+        <div><input type="checkbox" id="filter-planets" data-type="planet" checked><label for="filter-planets">Planets</label></div>
+        <div><input type="checkbox" id="filter-moons" data-type="moon" checked><label for="filter-moons">Moons</label></div>
+        <div><input type="checkbox" id="filter-stars" data-type="star" checked><label for="filter-stars">Labeled Stars</label></div>
+        <div><input type="checkbox" id="filter-stardust" data-type="stardust" checked><label for="filter-stardust">Galaxy Stars</label></div>
     </div>
 
     <div id="modal">
@@ -172,80 +285,116 @@
         import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
         import { createNoise2D } from 'https://cdn.skypack.dev/simplex-noise';
 
+        // --- GLOBAL VARS ---
+        let scene, camera, renderer, labelRenderer, controls, raycaster, mouse;
+        let galaxyStarfield, kaminoCluster;
+        const planetMeshes = [];
+        const regionLabels = [];
+        const orbitalSystems = [];
+        const searchableObjects = []; // For search and filtering
+
+        // Fly-to animation variables
+        let isFlying = false;
+        let flyStartTime;
+        const flyDuration = 2500; // ms
+        let flyStartPos, flyEndPos;
+        let flyStartTarget, flyEndTarget;
+
         // --- SCENE SETUP ---
-        const scene = new THREE.Scene();
-        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
-        camera.position.set(0, 250, 550);
+        function init() {
+            scene = new THREE.Scene();
+            camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+            camera.position.set(0, 250, 550);
 
-        const renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth, window.innerHeight);
-        document.body.appendChild(renderer.domElement);
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
 
-        const labelRenderer = new CSS2DRenderer();
-        labelRenderer.setSize(window.innerWidth, window.innerHeight);
-        labelRenderer.domElement.style.position = 'absolute';
-        labelRenderer.domElement.style.top = '0px';
-        document.body.appendChild(labelRenderer.domElement);
+            labelRenderer = new CSS2DRenderer();
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.domElement.style.position = 'absolute';
+            labelRenderer.domElement.style.top = '0px';
+            labelRenderer.domElement.style.pointerEvents = 'none'; // So we can click through
+            document.body.appendChild(labelRenderer.domElement);
 
-        const controls = new OrbitControls(camera, labelRenderer.domElement);
-        controls.enableDamping = true;
-        controls.dampingFactor = 0.05;
-        controls.minDistance = 10;
-        controls.maxDistance = 2000;
-        
-        // --- LIGHTING ---
-        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
-        scene.add(ambientLight);
-        const coreGlow = new THREE.PointLight(0xffeab3, 2, 800);
-        coreGlow.position.set(0,0,0);
-        scene.add(coreGlow);
+            controls = new OrbitControls(camera, renderer.domElement); // Control via main renderer
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            controls.minDistance = 10;
+            controls.maxDistance = 2000;
+            
+            raycaster = new THREE.Raycaster();
+            mouse = new THREE.Vector2();
+
+            // --- LIGHTING ---
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+            scene.add(ambientLight);
+            const coreGlow = new THREE.PointLight(0xffeab3, 2, 800);
+            coreGlow.position.set(0,0,0);
+            scene.add(coreGlow);
+
+            // --- BUILD THE GALAXY ---
+            createGalaxy();
+            createRegions();
+            createSolarSystems();
+            createCustomStars();
+            setupUI();
+        }
 
 
         // --- CELESTIAL DATABASE ---
         const planetData = [
-            { 
-                name: "Coruscant", 
-                position: new THREE.Vector3(25, 2, -30), 
-                info: { description: "An ecumenopolis, a city-covered planet, that for millennia served as the capital of the Republic and the Empire that followed.", landmarks: "Galactic Senate, Jedi Temple, Imperial Palace", faction: "Galactic Empire / New Republic", status: "Contested", species: "Human, various" },
-                design: { noiseScale: 50, terrainHeight: 5, waterLevel: 0, landColor: "#555555", waterColor: "#000000", atmo1Size: 0.03, atmo1Opacity: 0.7, atmo1Color: "#fde047", atmo2Size: 0.1, atmo2Opacity: 0.2, atmo2Color: "#ffffff" },
-                sun: { size: 5, color: 0xffff00, distance: 40, speed: 0.001 },
-                moons: [ { name: "Centax-1", size: 0.5, color: 0x808080, distance: 8, speed: 0.02 } ]
-            },
-            { 
-                name: "Naboo",
-                position: new THREE.Vector3(250, 20, 400),
-                info: { description: "A lush, idyllic world known for its peaceful human population and the amphibious Gungans.", landmarks: "Theed Royal Palace, Otoh Gunga", faction: "Galactic Empire (nominal), local resistance", status: "Peaceful", species: "Human, Gungan" },
-                design: { noiseScale: 200, terrainHeight: 30, waterLevel: 55, landColor: "#22c55e", waterColor: "#06b6d4", atmo1Size: 0.06, atmo1Opacity: 0.8, atmo1Color: "#67e8f9", atmo2Size: 0.2, atmo2Opacity: 0.3, atmo2Color: "#ffffff" },
-                sun: { size: 6, color: 0xfef08a, distance: 50, speed: 0.0009 },
-                moons: [
-                    { name: "Ohma-D'un", size: 0.7, color: 0x00ced1, distance: 10, speed: 0.018 },
-                    { name: "Veruna", size: 0.4, color: 0x9370db, distance: 16, speed: 0.011 }
-                ]
-            },
-            { 
-                name: "Tatooine", 
-                position: new THREE.Vector3(300, 5, -550), 
-                info: { description: "A harsh desert world orbiting two suns. A haven for smugglers and criminals.", landmarks: "Mos Eisley Spaceport, Jabba's Palace, Lars Homestead", faction: "Hutt Cartel", status: "Hostile", species: "Human, Jawa, Tusken Raider" },
-                design: { noiseScale: 250, terrainHeight: 15, waterLevel: 5, landColor: "#ca8a04", waterColor: "#facc15", atmo1Size: 0.04, atmo1Opacity: 0.5, atmo1Color: "#fde047", atmo2Size: 0.2, atmo2Opacity: 0.1, atmo2Color: "#fef08a" },
-                sun: [
-                    { size: 7, color: 0xff4500, separation: 15, speed: 0.002 },
-                    { size: 6, color: 0xffd700, separation: 15, speed: 0.002 }
-                ],
-                planetOrbit: { distance: 60, speed: 0.0007 },
-                moons: [ { name: "Ghomrassen", size: 0.4, color: 0xa52a2a, distance: 7, speed: 0.012 }, { name: "Guermessa", size: 0.3, color: 0x8B4513, distance: 11, speed: 0.009 } ]
-            },
+             { 
+                 name: "Coruscant", 
+                 position: new THREE.Vector3(25, 2, -30), 
+                 info: { description: "An ecumenopolis, a city-covered planet, that for millennia served as the capital of the Republic and the Empire that followed.", landmarks: "Galactic Senate, Jedi Temple, Imperial Palace", faction: "Galactic Empire / New Republic", status: "Contested", species: "Human, various" },
+                 design: { noiseScale: 50, terrainHeight: 5, waterLevel: 0, landColor: "#555555", waterColor: "#000000", atmo1Size: 0.03, atmo1Opacity: 0.7, atmo1Color: "#fde047", atmo2Size: 0.1, atmo2Opacity: 0.2, atmo2Color: "#ffffff" },
+                 sun: { name: "Coruscant Prime", size: 5, color: 0xffff00, distance: 40, speed: 0.001 },
+                 moons: [ { name: "Centax-1", size: 0.5, color: 0x808080, distance: 8, speed: 0.02 } ]
+             },
+             { 
+                 name: "Naboo",
+                 position: new THREE.Vector3(250, 20, 400),
+                 info: { description: "A lush, idyllic world known for its peaceful human population and the amphibious Gungans.", landmarks: "Theed Royal Palace, Otoh Gunga", faction: "Galactic Empire (nominal), local resistance", status: "Peaceful", species: "Human, Gungan" },
+                 design: { noiseScale: 200, terrainHeight: 30, waterLevel: 55, landColor: "#22c55e", waterColor: "#06b6d4", atmo1Size: 0.06, atmo1Opacity: 0.8, atmo1Color: "#67e8f9", atmo2Size: 0.2, atmo2Opacity: 0.3, atmo2Color: "#ffffff" },
+                 sun: { name: "Naboo Sun", size: 6, color: 0xfef08a, distance: 50, speed: 0.0009 },
+                 moons: [
+                     { name: "Ohma-D'un", size: 0.7, color: 0x00ced1, distance: 10, speed: 0.018 },
+                     { name: "Veruna", size: 0.4, color: 0x9370db, distance: 16, speed: 0.011 }
+                 ]
+             },
+             { 
+                 name: "Tatooine", 
+                 position: new THREE.Vector3(300, 5, -550), 
+                 info: { description: "A harsh desert world orbiting two suns. A haven for smugglers and criminals.", landmarks: "Mos Eisley Spaceport, Jabba's Palace, Lars Homestead", faction: "Hutt Cartel", status: "Hostile", species: "Human, Jawa, Tusken Raider" },
+                 design: { noiseScale: 250, terrainHeight: 15, waterLevel: 5, landColor: "#ca8a04", waterColor: "#facc15", atmo1Size: 0.04, atmo1Opacity: 0.5, atmo1Color: "#fde047", atmo2Size: 0.2, atmo2Opacity: 0.1, atmo2Color: "#fef08a" },
+                 sun: [
+                     { name: "Tatoo I", size: 7, color: 0xff4500, separation: 15, speed: 0.002 },
+                     { name: "Tatoo II", size: 6, color: 0xffd700, separation: 15, speed: 0.002 }
+                 ],
+                 planetOrbit: { distance: 60, speed: 0.0007 },
+                 moons: [ { name: "Ghomrassen", size: 0.4, color: 0xa52a2a, distance: 7, speed: 0.012 }, { name: "Guermessa", size: 0.3, color: 0x8B4513, distance: 11, speed: 0.009 } ]
+             },
         ];
         
         const regionData = [
-            { name: 'CORE', radius: 60, position: new THREE.Vector3(0, 10, 0) }, 
-            { name: 'COLONIES', radius: 120, position: new THREE.Vector3(100, 15, 100) },
-            { name: 'INNER RIM', radius: 250, position: new THREE.Vector3(170, -30, -200) }, 
-            { name: 'EXPANSION REGION', radius: 320, position: new THREE.Vector3(320, 45, 0) },
-            { name: 'MID RIM', radius: 500, position: new THREE.Vector3(400, -60, 300) }, 
-            { name: 'OUTER RIM', radius: 750, position: new THREE.Vector3(450, 80, 600) },
-            { name: 'UNKNOWN REGIONS', radius: 0, position: new THREE.Vector3(-800, 30, 50) }
+             { name: 'CORE', radius: 60, position: new THREE.Vector3(0, 10, 0) }, 
+             { name: 'COLONIES', radius: 120, position: new THREE.Vector3(100, 15, 100) },
+             { name: 'INNER RIM', radius: 250, position: new THREE.Vector3(170, -30, -200) }, 
+             { name: 'EXPANSION REGION', radius: 320, position: new THREE.Vector3(320, 45, 0) },
+             { name: 'MID RIM', radius: 500, position: new THREE.Vector3(400, -60, 300) }, 
+             { name: 'OUTER RIM', radius: 750, position: new THREE.Vector3(450, 80, 600) },
+             { name: 'UNKNOWN REGIONS', radius: 0, position: new THREE.Vector3(-800, 30, 50) }
         ];
 
+        const customStarData = [
+            { name: "Proxima Centauri", position: new THREE.Vector3(150, 50, -200) },
+            { name: "Sirius", position: new THREE.Vector3(-300, -20, 350) },
+            { name: "Alpha Centauri", position: new THREE.Vector3(155, 52, -205) },
+            { name: "Vega", position: new THREE.Vector3(500, 100, 100) },
+            { name: "Betelgeuse", position: new THREE.Vector3(-400, 70, -450) },
+        ];
+        
         // --- GALAXY CREATION ---
         
         function hexToRgb(hex) {
@@ -300,114 +449,108 @@
             return new THREE.CanvasTexture(canvas);
         }
         
-        const starColors = [ new THREE.Color("#FFFFFF"), new THREE.Color("#FEF08A"), new THREE.Color("#A5F3FC"), new THREE.Color("#FBCFE8"), new THREE.Color("#FFD8B1") ];
-        const whiteStarTexture = createStarFlareTexture("#FFFFFF");
-        const galaxyStarVertices = [];
-        const galaxyStarColors = [];
-        const numGalaxyStars = 40000;
-        const galaxyRadius = 800;
-        const galaxyArms = 4;
-        const armTightness = 0.5;
+        function createGalaxy() {
+            const starColors = [ new THREE.Color("#FFFFFF"), new THREE.Color("#FEF08A"), new THREE.Color("#A5F3FC"), new THREE.Color("#FBCFE8"), new THREE.Color("#FFD8B1") ];
+            const whiteStarTexture = createStarFlareTexture("#FFFFFF");
+            const galaxyStarVertices = [];
+            const galaxyStarColors = [];
+            const numGalaxyStars = 40000;
+            const galaxyRadius = 800;
+            const galaxyArms = 4;
+            const armTightness = 0.5;
 
-        for (let i = 0; i < numGalaxyStars; i++) {
-            const pos = new THREE.Vector3();
-            const angle = (i % (numGalaxyStars / galaxyArms)) / (numGalaxyStars / galaxyArms) * Math.PI * 2;
-            const distance = Math.pow(Math.random(), 2) * galaxyRadius;
-            const spiral = angle * armTightness;
-            const armIndex = Math.floor(i / (numGalaxyStars / galaxyArms));
-            const armAngle = (armIndex / galaxyArms) * Math.PI * 2;
-            pos.x = Math.cos(angle + spiral + armAngle) * distance;
-            const y_bulge = (Math.random() - 0.5) * 120 * Math.pow(1 - distance / galaxyRadius, 2);
-            const y_disk = (Math.random() - 0.5) * 20;
-            pos.y = y_bulge + y_disk;
-            pos.z = Math.sin(angle + spiral + armAngle) * distance;
-            galaxyStarVertices.push(pos.x, pos.y, pos.z);
-            const color = starColors[Math.floor(Math.random() * starColors.length)];
-            galaxyStarColors.push(color.r, color.g, color.b);
-        }
+            for (let i = 0; i < numGalaxyStars; i++) {
+                const pos = new THREE.Vector3();
+                const angle = (i % (numGalaxyStars / galaxyArms)) / (numGalaxyStars / galaxyArms) * Math.PI * 2;
+                const distance = Math.pow(Math.random(), 2) * galaxyRadius;
+                const spiral = angle * armTightness;
+                const armIndex = Math.floor(i / (numGalaxyStars / galaxyArms));
+                const armAngle = (armIndex / galaxyArms) * Math.PI * 2;
+                pos.x = Math.cos(angle + spiral + armAngle) * distance;
+                const y_bulge = (Math.random() - 0.5) * 120 * Math.pow(1 - distance / galaxyRadius, 2);
+                const y_disk = (Math.random() - 0.5) * 20;
+                pos.y = y_bulge + y_disk;
+                pos.z = Math.sin(angle + spiral + armAngle) * distance;
+                galaxyStarVertices.push(pos.x, pos.y, pos.z);
+                const color = starColors[Math.floor(Math.random() * starColors.length)];
+                galaxyStarColors.push(color.r, color.g, color.b);
+            }
 
-        const galaxyGeometry = new THREE.BufferGeometry();
-        galaxyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(galaxyStarVertices, 3));
-        galaxyGeometry.setAttribute('color', new THREE.Float32BufferAttribute(galaxyStarColors, 3));
-        
-        const galaxyMaterial = new THREE.PointsMaterial({
-            map: whiteStarTexture,
-            size: 6,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            sizeAttenuation: true,
-            vertexColors: true
-        });
+            const galaxyGeometry = new THREE.BufferGeometry();
+            galaxyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(galaxyStarVertices, 3));
+            galaxyGeometry.setAttribute('color', new THREE.Float32BufferAttribute(galaxyStarColors, 3));
+            
+            const galaxyMaterial = new THREE.PointsMaterial({
+                map: whiteStarTexture,
+                size: 6,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                sizeAttenuation: true,
+                vertexColors: true
+            });
 
-        const galaxyStarfield = new THREE.Points(galaxyGeometry, galaxyMaterial);
-        scene.add(galaxyStarfield);
+            galaxyStarfield = new THREE.Points(galaxyGeometry, galaxyMaterial);
+            scene.add(galaxyStarfield);
 
-        const kaminoPosition = new THREE.Vector3(-850, 30, 50);
-        const kaminoStarCount = 2000;
-        const kaminoInnerRadius = 40;
-        const kaminoOuterRadius = 80;
-        const kaminoStarVertices = [];
-        const kaminoStarColors = [];
-        const kaminoColor = new THREE.Color("#A5F3FC");
+            const kaminoPosition = new THREE.Vector3(-850, 30, 50);
+            const kaminoStarCount = 2000;
+            const kaminoInnerRadius = 40;
+            const kaminoOuterRadius = 80;
+            const kaminoStarVertices = [];
+            const kaminoStarColors = [];
+            const kaminoColor = new THREE.Color("#A5F3FC");
 
-        for (let i = 0; i < kaminoStarCount; i++) {
-            const dist = THREE.MathUtils.randFloat(kaminoInnerRadius, kaminoOuterRadius);
-            const theta = Math.random() * Math.PI * 2;
-            const phi = Math.acos((Math.random() * 2) - 1);
-            const x = dist * Math.sin(phi) * Math.cos(theta);
-            const y = dist * Math.sin(phi) * Math.sin(theta);
-            const z = dist * Math.cos(phi);
-            kaminoStarVertices.push(x, y, z);
-            kaminoStarColors.push(kaminoColor.r, kaminoColor.g, kaminoColor.b);
-        }
-        
-        const kaminoGeometry = new THREE.BufferGeometry();
-        kaminoGeometry.setAttribute('position', new THREE.Float32BufferAttribute(kaminoStarVertices, 3));
-        kaminoGeometry.setAttribute('color', new THREE.Float32BufferAttribute(kaminoStarColors, 3));
-        
-        const kaminoMaterial = new THREE.PointsMaterial({
-            map: whiteStarTexture,
-            size: 4,
-            transparent: true,
-            blending: THREE.AdditiveBlending,
-            depthWrite: false,
-            sizeAttenuation: true,
-            vertexColors: true
-        });
-
-        const kaminoCluster = new THREE.Points(kaminoGeometry, kaminoMaterial);
-        kaminoCluster.position.copy(kaminoPosition);
-        scene.add(kaminoCluster);
-
-        const coreGeometry = new THREE.SphereGeometry(40, 32, 32);
-        const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xffeab3, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
-        const core = new THREE.Mesh(coreGeometry, coreMaterial);
-        scene.add(core);
-        
-        const regionLabels = [];
-        
-        regionData.forEach(region => {
-            if (region.radius > 0) {
-                const geometry = new THREE.RingGeometry(region.radius - 1, region.radius, 128);
-                const material = new THREE.MeshBasicMaterial({ color: 0xffc107, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
-                const mesh = new THREE.Mesh(geometry, material);
-                mesh.rotation.x = Math.PI / 2;
-                scene.add(mesh);
+            for (let i = 0; i < kaminoStarCount; i++) {
+                const dist = THREE.MathUtils.randFloat(kaminoInnerRadius, kaminoOuterRadius);
+                const theta = Math.random() * Math.PI * 2;
+                const phi = Math.acos((Math.random() * 2) - 1);
+                const x = dist * Math.sin(phi) * Math.cos(theta);
+                const y = dist * Math.sin(phi) * Math.sin(theta);
+                const z = dist * Math.cos(phi);
+                kaminoStarVertices.push(x, y, z);
+                kaminoStarColors.push(kaminoColor.r, kaminoColor.g, kaminoColor.b);
             }
             
-            const text = document.createElement('div');
-            text.className = 'region-label';
-            text.textContent = region.name;
-            const label = new CSS2DObject(text);
-            label.position.copy(region.position);
-            scene.add(label);
-            regionLabels.push(label);
-        });
+            const kaminoGeometry = new THREE.BufferGeometry();
+            kaminoGeometry.setAttribute('position', new THREE.Float32BufferAttribute(kaminoStarVertices, 3));
+            kaminoGeometry.setAttribute('color', new THREE.Float32BufferAttribute(kaminoStarColors, 3));
+            
+            const kaminoMaterial = galaxyMaterial.clone();
+            kaminoMaterial.size = 4;
 
-        const planetMeshes = [];
+            kaminoCluster = new THREE.Points(kaminoGeometry, kaminoMaterial);
+            kaminoCluster.position.copy(kaminoPosition);
+            scene.add(kaminoCluster);
+
+            const coreGeometry = new THREE.SphereGeometry(40, 32, 32);
+            const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xffeab3, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+            const core = new THREE.Mesh(coreGeometry, coreMaterial);
+            scene.add(core);
+        }
+
+        function createRegions() {
+            regionData.forEach(region => {
+                if (region.radius > 0) {
+                    const geometry = new THREE.RingGeometry(region.radius - 1, region.radius, 128);
+                    const material = new THREE.MeshBasicMaterial({ color: 0xffc107, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+                    const mesh = new THREE.Mesh(geometry, material);
+                    mesh.rotation.x = Math.PI / 2;
+                    scene.add(mesh);
+                }
+                
+                const text = document.createElement('div');
+                text.className = 'region-label';
+                text.textContent = region.name;
+                const label = new CSS2DObject(text);
+                label.position.copy(region.position);
+                scene.add(label);
+                regionLabels.push(label);
+            });
+        }
+        
+        // --- PLANET & SYSTEM CREATION ---
         const noise2D = createNoise2D();
-
         const atmoVertexShader = `
             varying vec3 vNormal;
             void main() {
@@ -427,7 +570,7 @@
         `;
 
         function generatePlanetTexture(design) {
-            const { noiseScale, terrainHeight, waterLevel, landColor, waterColor } = design;
+            const { noiseScale, waterLevel, landColor, waterColor } = design;
             const textureCanvas = document.createElement('canvas');
             textureCanvas.width = 1024;
             textureCanvas.height = 512;
@@ -435,20 +578,19 @@
             const width = textureCanvas.width;
             const height = textureCanvas.height;
 
+            const landR = parseInt(landColor.substr(1, 2), 16);
+            const landG = parseInt(landColor.substr(3, 2), 16);
+            const landB = parseInt(landColor.substr(5, 2), 16);
+
             for (let y = 0; y < height; y++) {
                 for (let x = 0; x < width; x++) {
                     const noiseVal = (noise2D(x / noiseScale, y / noiseScale) + 1) / 2; 
                     const normalizedHeight = noiseVal * 100;
                     if (normalizedHeight < waterLevel) {
                         ctx.fillStyle = waterColor;
-                    } else if (normalizedHeight < waterLevel + terrainHeight) {
-                        const landShade = Math.floor(100 + (normalizedHeight - waterLevel) / terrainHeight * 100);
-                        const r = parseInt(landColor.substr(1, 2), 16);
-                        const g = parseInt(landColor.substr(3, 2), 16);
-                        const b = parseInt(landColor.substr(5, 2), 16);
-                        ctx.fillStyle = `rgb(${r*landShade/200}, ${g*landShade/200}, ${b*landShade/200})`;
                     } else {
-                        ctx.fillStyle = landColor;
+                        const shade = 0.7 + (normalizedHeight - waterLevel) / (100 - waterLevel) * 0.3;
+                        ctx.fillStyle = `rgb(${landR * shade}, ${landG * shade}, ${landB * shade})`;
                     }
                     ctx.fillRect(x, y, 1, 1);
                 }
@@ -462,8 +604,10 @@
             const planetTexture = generatePlanetTexture(data.design);
             const planetMaterial = new THREE.MeshPhongMaterial({ map: planetTexture });
             const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
-            planetMesh.userData = data;
+            planetMesh.userData = data; // For click events
             planetGroup.add(planetMesh);
+            
+            // Atmosphere
             const atmo1Material = new THREE.ShaderMaterial({
                 vertexShader: atmoVertexShader,
                 fragmentShader: atmoFragmentShader,
@@ -477,84 +621,150 @@
                 transparent: true
             });
             const atmo1 = new THREE.Mesh(planetGeometry, atmo1Material);
-            atmo1.scale.set(1.0 + data.design.atmo1Size, 1.0 + data.design.atmo1Size, 1.0 + data.design.atmo1Size);
+            atmo1.scale.setScalar(1.0 + data.design.atmo1Size);
             planetGroup.add(atmo1);
+            
             const atmo2Material = atmo1Material.clone();
             atmo2Material.uniforms.uColor.value = new THREE.Color(data.design.atmo2Color);
             atmo2Material.uniforms.uOpacity.value = data.design.atmo2Opacity;
             atmo2Material.uniforms.uPower.value = 4.0;
             const atmo2 = new THREE.Mesh(planetGeometry, atmo2Material);
-            atmo2.scale.set(1.0 + data.design.atmo2Size, 1.0 + data.design.atmo2Size, 1.0 + data.design.atmo2Size);
+            atmo2.scale.setScalar(1.0 + data.design.atmo2Size);
             planetGroup.add(atmo2);
+            
             return planetGroup;
         }
 
-        const orbitalSystems = [];
-        planetData.forEach(p => {
-            const solarSystemGroup = new THREE.Object3D();
-            solarSystemGroup.position.copy(p.position);
-            scene.add(solarSystemGroup);
-
-            const planetGroup = createProceduralPlanet(p);
-            
-            const system = {
-                systemGroup: solarSystemGroup,
-                planetGroup: planetGroup,
-                moons: [],
-                planetRotationSpeed: 0.005,
-                angle: Math.random() * Math.PI * 2
-            };
-
-            if (Array.isArray(p.sun)) { // Binary sun system
-                system.binaryPivot = new THREE.Object3D();
-                solarSystemGroup.add(system.binaryPivot);
-                
-                const sun1 = new THREE.Mesh(new THREE.SphereGeometry(p.sun[0].size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun[0].color }));
-                sun1.position.x = p.sun[0].separation / 2;
-                
-                const sun2 = new THREE.Mesh(new THREE.SphereGeometry(p.sun[1].size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun[1].color }));
-                sun2.position.x = -p.sun[1].separation / 2;
-
-                system.binaryPivot.add(sun1);
-                system.binaryPivot.add(sun2);
-                system.binarySpeed = p.sun[0].speed;
-                
-                solarSystemGroup.add(planetGroup);
-                system.planetOrbitSpeed = p.planetOrbit.speed;
-                system.planetOrbitDistance = p.planetOrbit.distance;
-
-            } else { // Single sun
-                const sun = new THREE.Mesh(new THREE.SphereGeometry(p.sun.size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun.color }));
-                solarSystemGroup.add(sun);
-                solarSystemGroup.add(planetGroup);
-                system.planetOrbitSpeed = p.sun.speed;
-                system.planetOrbitDistance = p.sun.distance;
-            }
-            
-            planetMeshes.push(planetGroup.children[0]);
-
-            p.moons.forEach(m => {
-                const moonGeometry = new THREE.SphereGeometry(m.size, 16, 16);
-                const moonMaterial = new THREE.MeshStandardMaterial({ color: m.color });
-                const moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
-                planetGroup.add(moonMesh);
-                system.moons.push({ mesh: moonMesh, speed: m.speed, distance: m.distance, angle: Math.random() * Math.PI * 2 });
-            });
-            
-            orbitalSystems.push(system);
-
+        function createLabel(name, objectToAttach, yOffset = 0) {
             const text = document.createElement('div');
             text.className = 'label';
-            text.textContent = p.name;
+            text.textContent = name;
             const label = new CSS2DObject(text);
-            planetGroup.add(label);
-            label.position.y = 8;
-        });
+            label.position.y = yOffset;
+            objectToAttach.add(label);
+            return label;
+        }
 
-        const raycaster = new THREE.Raycaster();
-        const mouse = new THREE.Vector2();
+        function createSolarSystems() {
+            planetData.forEach(p => {
+                const solarSystemGroup = new THREE.Object3D();
+                solarSystemGroup.position.copy(p.position);
+                scene.add(solarSystemGroup);
+
+                const planetGroup = createProceduralPlanet(p);
+                const planetMesh = planetGroup.children[0];
+                planetMeshes.push(planetMesh);
+
+                const planetLabel = createLabel(p.name, planetGroup, 8);
+                searchableObjects.push({ name: p.name, type: 'planet', object3d: planetMesh, label: planetLabel });
+                
+                const system = {
+                    systemGroup: solarSystemGroup,
+                    planetGroup: planetGroup,
+                    moons: [],
+                    planetRotationSpeed: 0.005,
+                    angle: Math.random() * Math.PI * 2
+                };
+
+                if (Array.isArray(p.sun)) { // Binary sun system
+                    system.binaryPivot = new THREE.Object3D();
+                    solarSystemGroup.add(system.binaryPivot);
+                    
+                    const sun1 = new THREE.Mesh(new THREE.SphereGeometry(p.sun[0].size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun[0].color }));
+                    sun1.position.x = p.sun[0].separation;
+                    const sun1Label = createLabel(p.sun[0].name, sun1, p.sun[0].size + 2);
+                    system.binaryPivot.add(sun1);
+                    searchableObjects.push({ name: p.sun[0].name, type: 'sun', object3d: sun1, label: sun1Label });
+
+                    const sun2 = new THREE.Mesh(new THREE.SphereGeometry(p.sun[1].size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun[1].color }));
+                    sun2.position.x = -p.sun[1].separation;
+                    const sun2Label = createLabel(p.sun[1].name, sun2, p.sun[1].size + 2);
+                    system.binaryPivot.add(sun2);
+                    searchableObjects.push({ name: p.sun[1].name, type: 'sun', object3d: sun2, label: sun2Label });
+
+                    system.binarySpeed = p.sun[0].speed;
+                    
+                    solarSystemGroup.add(planetGroup);
+                    system.planetOrbitSpeed = p.planetOrbit.speed;
+                    system.planetOrbitDistance = p.planetOrbit.distance;
+
+                } else { // Single sun
+                    const sun = new THREE.Mesh(new THREE.SphereGeometry(p.sun.size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun.color }));
+                    solarSystemGroup.add(sun);
+                    const sunLabel = createLabel(p.sun.name, sun, p.sun.size + 2);
+                    searchableObjects.push({ name: p.sun.name, type: 'sun', object3d: sun, label: sunLabel });
+
+                    solarSystemGroup.add(planetGroup);
+                    system.planetOrbitSpeed = p.sun.speed;
+                    system.planetOrbitDistance = p.sun.distance;
+                }
+                
+                p.moons.forEach(m => {
+                    const moonGeometry = new THREE.SphereGeometry(m.size, 16, 16);
+                    const moonMaterial = new THREE.MeshStandardMaterial({ color: m.color });
+                    const moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
+                    planetGroup.add(moonMesh);
+                    const moonLabel = createLabel(m.name, moonMesh, m.size + 1);
+                    system.moons.push({ mesh: moonMesh, speed: m.speed, distance: m.distance, angle: Math.random() * Math.PI * 2 });
+                    searchableObjects.push({ name: m.name, type: 'moon', object3d: moonMesh, label: moonLabel });
+                });
+                
+                orbitalSystems.push(system);
+            });
+        }
+
+        function createCustomStars() {
+            const starTexture = createStarFlareTexture("#FFFFFF");
+             const starMaterial = new THREE.SpriteMaterial({
+                map: starTexture,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                transparent: true,
+                sizeAttenuation: true
+            });
+
+            customStarData.forEach(s => {
+                const sprite = new THREE.Sprite(starMaterial);
+                sprite.scale.set(10, 10, 1);
+                sprite.position.copy(s.position);
+                scene.add(sprite);
+
+                const starLabel = createLabel(s.name, sprite, 8);
+                searchableObjects.push({ name: s.name, type: 'star', object3d: sprite, label: starLabel });
+            });
+        }
+        
+        // --- UI & INTERACTION ---
+        function setupUI() {
+            // Modal
+            document.getElementById('close-modal').addEventListener('click', hideModal);
+            document.getElementById('modal').addEventListener('click', (event) => {
+                if (event.target === document.getElementById('modal')) { hideModal(); }
+            });
+
+            // Raycaster Click
+            renderer.domElement.addEventListener('click', onMouseClick, false);
+
+            // Search
+            const searchInput = document.getElementById('search-input');
+            const suggestionsContainer = document.getElementById('search-suggestions');
+            searchInput.addEventListener('input', () => updateSearchSuggestions(searchInput.value));
+            searchInput.addEventListener('focus', () => updateSearchSuggestions(searchInput.value));
+            
+            document.addEventListener('click', (e) => {
+                if (!document.getElementById('search-container').contains(e.target)) {
+                    suggestionsContainer.style.display = 'none';
+                }
+            });
+
+            // Filters
+            document.querySelectorAll('#filter-controls input[type="checkbox"]').forEach(checkbox => {
+                checkbox.addEventListener('change', updateFilters);
+            });
+        }
         
         function onMouseClick(event) {
+            if (isFlying) return;
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
@@ -565,11 +775,6 @@
             }
         }
         
-        window.addEventListener('click', onMouseClick);
-        
-        const modal = document.getElementById('modal');
-        const closeModalButton = document.getElementById('close-modal');
-
         function showModal(data) {
             document.getElementById('planet-name').textContent = data.name;
             document.getElementById('planet-description').textContent = data.info.description;
@@ -577,26 +782,101 @@
             document.getElementById('planet-faction').textContent = data.info.faction;
             document.getElementById('planet-status').textContent = data.info.status;
             document.getElementById('planet-species').textContent = data.info.species;
-            const exploreButton = document.getElementById('explore-button');
-            const planetNameNoSpaces = data.name.replace(/[\s']/g, '');
-            exploreButton.href = `#`; // Placeholder link
-            modal.style.display = 'block';
+            document.getElementById('modal').style.display = 'block';
         }
 
         function hideModal() {
-            modal.style.display = 'none';
+            document.getElementById('modal').style.display = 'none';
         }
 
-        closeModalButton.addEventListener('click', hideModal);
-        window.addEventListener('click', (event) => {
-            if (event.target === modal) { hideModal(); }
-        });
+        function updateSearchSuggestions(query) {
+            const suggestionsContainer = document.getElementById('search-suggestions');
+            if (!query) {
+                suggestionsContainer.style.display = 'none';
+                return;
+            }
+            
+            const lowerCaseQuery = query.toLowerCase();
+            const filtered = searchableObjects.filter(obj => obj.name.toLowerCase().includes(lowerCaseQuery));
 
+            suggestionsContainer.innerHTML = '';
+            if(filtered.length > 0) {
+                suggestionsContainer.style.display = 'block';
+                filtered.slice(0, 10).forEach(item => { // Limit to 10 suggestions
+                    const div = document.createElement('div');
+                    div.className = 'suggestion-item';
+                    div.innerHTML = `${item.name} <span class="type">${item.type}</span>`;
+                    div.onclick = () => {
+                        document.getElementById('search-input').value = item.name;
+                        suggestionsContainer.style.display = 'none';
+                        startFlyTo(item.object3d);
+                    };
+                    suggestionsContainer.appendChild(div);
+                });
+            } else {
+                suggestionsContainer.style.display = 'none';
+            }
+        }
+
+        function updateFilters() {
+            const filters = {
+                sun: document.getElementById('filter-suns').checked,
+                planet: document.getElementById('filter-planets').checked,
+                moon: document.getElementById('filter-moons').checked,
+                star: document.getElementById('filter-stars').checked,
+                stardust: document.getElementById('filter-stardust').checked,
+            };
+
+            searchableObjects.forEach(obj => {
+                const isVisible = filters[obj.type];
+                obj.object3d.visible = isVisible;
+                obj.label.visible = isVisible;
+            });
+            
+            galaxyStarfield.visible = filters.stardust;
+            kaminoCluster.visible = filters.stardust;
+        }
+
+        function startFlyTo(targetObject) {
+            isFlying = true;
+            flyStartTime = Date.now();
+            controls.enabled = false;
+
+            const targetPosition = new THREE.Vector3();
+            targetObject.getWorldPosition(targetPosition);
+            
+            flyStartPos = camera.position.clone();
+            flyStartTarget = controls.target.clone();
+            flyEndTarget = targetPosition;
+
+            // Calculate an offset end position for the camera
+            const distance = targetObject.type === 'star' ? 100 : 40;
+            const direction = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
+            flyEndPos = targetPosition.clone().add(direction.multiplyScalar(distance));
+        }
+
+        // --- ANIMATION LOOP ---
         const clock = new THREE.Clock();
         function animate() {
             requestAnimationFrame(animate);
-            const delta = clock.getDelta();
-            controls.update();
+
+            if (isFlying) {
+                const elapsedTime = Date.now() - flyStartTime;
+                let progress = Math.min(elapsedTime / flyDuration, 1.0);
+                const easeProgress = 0.5 - 0.5 * Math.cos(progress * Math.PI); // Ease in-out
+
+                camera.position.lerpVectors(flyStartPos, flyEndPos, easeProgress);
+                controls.target.lerpVectors(flyStartTarget, flyEndTarget, easeProgress);
+                camera.lookAt(controls.target);
+
+                if (progress >= 1.0) {
+                    isFlying = false;
+                    controls.enabled = true;
+                }
+            } else {
+                 controls.update();
+            }
+
             scene.rotation.y += 0.00005;
 
             orbitalSystems.forEach(sys => {
@@ -629,27 +909,37 @@
                 newSize = Math.max(8, Math.min(newSize, 30)); 
                 label.element.style.fontSize = `${newSize}px`;
             });
+            
+            searchableObjects.forEach(obj => {
+                if (obj.label.visible) {
+                    const objPosition = new THREE.Vector3();
+                    obj.object3d.getWorldPosition(objPosition);
+                    const distance = cameraPosition.distanceTo(objPosition);
+                    obj.label.element.style.opacity = Math.max(0, 1 - (distance / 400));
+                }
+            });
 
             renderer.render(scene, camera);
             labelRenderer.render(scene, camera);
         }
-                
-        window.addEventListener('resize', () => {
+        
+        function onWindowResize() {
             camera.aspect = window.innerWidth / window.innerHeight;
             camera.updateProjectionMatrix();
             renderer.setSize(window.innerWidth, window.innerHeight);
             labelRenderer.setSize(window.innerWidth, window.innerHeight);
-        });
+        }
+        window.addEventListener('resize', onWindowResize);
 
         window.onload = () => {
+            init();
+            animate();
             const loadingScreen = document.getElementById('loading-screen');
             loadingScreen.classList.add('fade-out');
             setTimeout(() => {
                 loadingScreen.style.display = 'none';
             }, 1000); 
-            animate();
         };
     </script>
 </body>
 </html>
-
