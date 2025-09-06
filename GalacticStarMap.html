@@ -110,7 +110,6 @@
     <div id="info-box">
         Use your mouse to rotate (left-click & drag), pan (right-click & drag), and zoom (scroll).
     </div>
-
     <div id="modal">
         <div id="modal-content">
             <h2 id="planet-name"></h2>
@@ -123,7 +122,6 @@
         </div>
         <button id="close-modal">&times;</button>
     </div>
-
     <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
     <script type="importmap">
     {
@@ -133,7 +131,6 @@
         }
     }
     </script>
-
     <script type="module">
         import * as THREE from 'three';
         import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
@@ -159,7 +156,7 @@
         controls.dampingFactor = 0.05;
         controls.minDistance = 5;
         controls.maxDistance = 2000;
-        
+
         // --- CELESTIAL DATABASE (EDIT COORDINATES HERE) ---
         const planetData = [
             // --- Core Worlds ---
@@ -221,19 +218,19 @@
             { name: "Ahch-To", position: new THREE.Vector3(-600, 40, 200), info: { description: "A remote, ocean world, site of the first Jedi Temple and Luke Skywalker's exile.", landmarks: "First Jedi Temple, Jedi Village", faction: "None", status: "Neutral", species: "Porg, Caretakers" } },
             { name: "Batuu", position: new THREE.Vector3(-400, 10, 250), info: { description: "A remote outpost on the edge of the galaxy, a crossroads for smugglers and adventurers.", landmarks: "Black Spire Outpost", faction: "Neutral", status: "Neutral", species: "Various" } },
         ];
-        
+
         const regionData = [
-            { name: 'CORE', radius: 60, position: new THREE.Vector3(0, 10, 0) }, 
+            { name: 'CORE', radius: 60, position: new THREE.Vector3(0, 10, 0) },
             { name: 'COLONIES', radius: 120, position: new THREE.Vector3(100, 15, 100) },
-            { name: 'INNER RIM', radius: 250, position: new THREE.Vector3(170, -30, -200) }, 
+            { name: 'INNER RIM', radius: 250, position: new THREE.Vector3(170, -30, -200) },
             { name: 'EXPANSION REGION', radius: 320, position: new THREE.Vector3(320, 45, 0) },
-            { name: 'MID RIM', radius: 500, position: new THREE.Vector3(400, -60, 300) }, 
+            { name: 'MID RIM', radius: 500, position: new THREE.Vector3(400, -60, 300) },
             { name: 'OUTER RIM', radius: 750, position: new THREE.Vector3(450, 80, 600) },
             { name: 'UNKNOWN REGIONS', radius: 0, position: new THREE.Vector3(-800, 30, 50) } // Radius 0 as it has no ring
         ];
 
         // --- GALAXY CREATION ---
-        
+
         const kaminoPosition = new THREE.Vector3(-900, -50, 220);
         const kaminoVoidRadius = 40;
         const kaminoStarDensityRadius = 70;
@@ -256,7 +253,7 @@
             const y_disk = (Math.random() - 0.5) * 15;
             pos.y = y_bulge + y_disk;
             pos.z = Math.sin(angle + spiral + armAngle) * distance;
-            
+
             galaxyStarVertices.push(pos.x, pos.y, pos.z);
         }
 
@@ -278,7 +275,7 @@
             pos.x = dist * Math.sin(phi) * Math.cos(theta);
             pos.y = dist * Math.sin(phi) * Math.sin(theta) * 0.7; // Make it a bit flatter
             pos.z = dist * Math.cos(phi);
-            
+
             kaminoStarVertices.push(pos.x, pos.y, pos.z);
         }
 
@@ -289,18 +286,17 @@
         kaminoCluster.position.copy(kaminoPosition); // Move the entire cluster to its location
         scene.add(kaminoCluster);
 
-
         const coreGeometry = new THREE.SphereGeometry(40, 32, 32);
         const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xffeab3, transparent: true, opacity: 0.8 });
         const core = new THREE.Mesh(coreGeometry, coreMaterial);
         scene.add(core);
-        
+
         const coreGlow = new THREE.PointLight(0xffeab3, 2, 800);
         coreGlow.position.set(0,0,0);
         scene.add(coreGlow);
 
         const regionLabels = [];
-        
+
         regionData.forEach(region => {
             if (region.radius > 0) {
                 const geometry = new THREE.RingGeometry(region.radius - 1, region.radius, 128);
@@ -309,7 +305,7 @@
                 mesh.rotation.x = Math.PI / 2;
                 scene.add(mesh);
             }
-            
+
             const text = document.createElement('div');
             text.className = 'region-label';
             text.textContent = region.name;
@@ -342,7 +338,7 @@
         // --- INTERACTIVITY ---
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
-        
+
         function onMouseClick(event) {
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
@@ -353,9 +349,9 @@
                 showModal(clickedPlanetData);
             }
         }
-        
+
         window.addEventListener('click', onMouseClick);
-        
+
         const modal = document.getElementById('modal');
         const closeModalButton = document.getElementById('close-modal');
 
@@ -366,12 +362,12 @@
             document.getElementById('planet-faction').textContent = data.info.faction;
             document.getElementById('planet-status').textContent = data.info.status;
             document.getElementById('planet-species').textContent = data.info.species;
-            
+
             const exploreButton = document.getElementById('explore-button');
             // --- CHANGE: Updated href to match local file structure ---
             const planetNameNoSpaces = data.name.replace(/[\s']/g, '');
             exploreButton.href = `Databases/Planets Info/${planetNameNoSpaces}/${planetNameNoSpaces}GALdb.html`;
-            
+
             modal.style.display = 'block';
         }
 
@@ -389,9 +385,12 @@
             requestAnimationFrame(animate);
             controls.update();
 
-            starfield.rotation.y += 0.0001; 
-            kaminoCluster.rotation.y += 0.0005;
-            
+            // The following lines were rotating the stars and have been commented out.
+            // By removing this manual rotation, the stars will now move with the camera,
+            // giving the correct illusion of the entire galaxy rotating as one.
+            // starfield.rotation.y += 0.0001;
+            // kaminoCluster.rotation.y += 0.0005;
+
             const cameraPosition = new THREE.Vector3();
             camera.getWorldPosition(cameraPosition);
 
@@ -402,15 +401,14 @@
                 const baseSize = 20;
                 const scaleFactor = 3000;
                 let newSize = baseSize * (scaleFactor / distance);
-                newSize = Math.max(8, Math.min(newSize, 30)); 
+                newSize = Math.max(8, Math.min(newSize, 30));
                 label.element.style.fontSize = `${newSize}px`;
             });
 
             renderer.render(scene, camera);
             labelRenderer.render(scene, camera);
         }
-               
-        
+
         // --- RESIZE HANDLING ---
         window.addEventListener('resize', () => {
             camera.aspect = window.innerWidth / window.innerHeight;
