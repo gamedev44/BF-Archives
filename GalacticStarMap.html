@@ -51,6 +51,7 @@
             pointer-events: none; /* Important so clicks pass through to the canvas */
             font-size: 14px;
             white-space: nowrap;
+            transition: opacity 0.3s ease-out;
         }
         .region-label {
             color: #ffc107;
@@ -230,6 +231,24 @@
             cursor: pointer;
         }
 
+        #view-toggle-btn {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(10, 25, 47, 0.8);
+            border: 1px solid #38bdf8;
+            color: #e0f2fe;
+            padding: 10px 15px;
+            border-radius: 8px;
+            cursor: pointer;
+            z-index: 10;
+            transition: all 0.3s ease;
+        }
+        #view-toggle-btn:hover {
+            background-color: #38bdf8;
+            color: #0c1a2e;
+        }
+
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
 </head>
@@ -241,6 +260,8 @@
     <div id="info-box">
         Use your mouse to rotate (left-click & drag), pan (right-click & drag), and zoom (scroll).
     </div>
+
+    <button id="view-toggle-btn">Top-Down View</button>
     
     <div id="search-container">
         <input type="text" id="search-input" placeholder="Search for a celestial body...">
@@ -287,11 +308,18 @@
 
         // --- GLOBAL VARS ---
         let scene, camera, renderer, labelRenderer, controls, raycaster, mouse;
-        let galaxyStarfield, kaminoCluster;
+        let kaminoCluster;
+        const galaxyStarfields = [];
         const planetMeshes = [];
+        const customStarSprites = [];
         const regionLabels = [];
         const orbitalSystems = [];
         const searchableObjects = []; // For search and filtering
+
+        // View state
+        let isTopDown = false;
+        const perspectivePos = new THREE.Vector3(0, 250, 550);
+        const topDownPos = new THREE.Vector3(0, 1500, 1);
 
         // Fly-to animation variables
         let isFlying = false;
@@ -304,7 +332,7 @@
         function init() {
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
-            camera.position.set(0, 250, 550);
+            camera.position.copy(perspectivePos);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -388,11 +416,11 @@
         ];
 
         const customStarData = [
-            { name: "Proxima Centauri", position: new THREE.Vector3(150, 50, -200) },
-            { name: "Sirius", position: new THREE.Vector3(-300, -20, 350) },
-            { name: "Alpha Centauri", position: new THREE.Vector3(155, 52, -205) },
-            { name: "Vega", position: new THREE.Vector3(500, 100, 100) },
-            { name: "Betelgeuse", position: new THREE.Vector3(-400, 70, -450) },
+            { name: "Aster Prime", position: new THREE.Vector3(150, 50, -200), color: "#ff9933", scale: { min: 14, max: 18 }, info: { description: "A main-sequence orange dwarf, known for its stability and the numerous terrestrial worlds in its orbit.", type: "K-type Star", status: "Stable" } },
+            { name: "GB-142 (b)", position: new THREE.Vector3(-300, -20, 350), color: "#27EBF5", scale: { min: 10, max: 12 }, info: { description: "A massive, hot blue giant that burns through its fuel at an astonishing rate. It is expected to go supernova within the next few million years.", type: "B-type Star", status: "Variable" } },
+            { name: "Odysee IV", position: new THREE.Vector3(155, 52, -205), color: "#99ff66", scale: { min: 12, max: 15 }, info: { description: "A peculiar green-hued star, its color a result of unusual elements in its photosphere. It is a popular tourist destination.", type: "F-type Star (Anomalous)", status: "Stable" } },
+            { name: "Elanuera I", position: new THREE.Vector3(500, 100, 100), color: "#FF6600", scale: { min: 15, max: 20 }, info: { description: "A volatile red giant in the late stages of its life. Its outer layers have expanded to engulf its inner planets.", type: "M-type Giant", status: "Unstable" } },
+            { name: "Schiferstad", position: new THREE.Vector3(-400, 70, -450), color: "#ffff99", scale: { min: 11, max: 14 }, info: { description: "A yellow dwarf star very similar to Earth's own sun, considered a prime candidate for harboring life.", type: "G-type Star", status: "Stable" } },
         ];
         
         // --- GALAXY CREATION ---
@@ -410,7 +438,15 @@
             const ctx = canvas.getContext('2d');
             const centerX = size / 2;
             const centerY = size / 2;
-            const rgb = hexToRgb(colorStr);
+
+            // randomize base color slightly
+            const baseRgb = hexToRgb(colorStr);
+            const rgb = {
+                r: Math.min(255, Math.max(0, baseRgb.r + (Math.random() - 0.5) * 100)),
+                g: Math.min(255, Math.max(0, baseRgb.g + (Math.random() - 0.5) * 100)),
+                b: Math.min(255, Math.max(0, baseRgb.b + (Math.random() - 0.5) * 100))
+            };
+
             const haloSize = size / 2;
             const haloOpacity = Math.random() * 0.2 + 0.1;
             const haloGradient = ctx.createRadialGradient(centerX, centerY, haloSize / 4, centerX, centerY, haloSize);
@@ -418,18 +454,29 @@
             haloGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
             ctx.fillStyle = haloGradient;
             ctx.fillRect(0, 0, size, size);
+
             const rayCount = Math.floor(Math.random() * 6) + 4;
             const rayLength = size * 0.4;
             const rayOpacity = Math.random() * 0.2 + 0.1;
-            const rayRandomness = Math.random() * 0.5 + 2.8;
+            const rayRandomness = Math.random() * 5;
+
             for (let i = 0; i < rayCount; i++) {
                 const angle = (i / rayCount) * Math.PI * 2 + (Math.random() - 0.5) * rayRandomness;
                 const length = rayLength * (1 + (Math.random() - 0.5) * rayRandomness);
                 const endX = centerX + Math.cos(angle) * length;
                 const endY = centerY + Math.sin(angle) * length;
+
+                // randomized gradient per ray
+                const rayRgb = {
+                    r: Math.min(255, Math.max(0, rgb.r + (Math.random() - 0.5) * 80)),
+                    g: Math.min(255, Math.max(0, rgb.g + (Math.random() - 0.5) * 80)),
+                    b: Math.min(255, Math.max(0, rgb.b + (Math.random() - 0.5) * 80))
+                };
+
                 const rayGradient = ctx.createLinearGradient(centerX, centerY, endX, endY);
-                rayGradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${rayOpacity})`);
-                rayGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+                rayGradient.addColorStop(0, `rgba(${rayRgb.r}, ${rayRgb.g}, ${rayRgb.b}, ${rayOpacity})`);
+                rayGradient.addColorStop(1, `rgba(${rayRgb.r}, ${rayRgb.g}, ${rayRgb.b}, 0)`);
+
                 ctx.strokeStyle = rayGradient;
                 ctx.lineWidth = Math.random() * 1.5 + 0.5;
                 ctx.beginPath();
@@ -437,7 +484,8 @@
                 ctx.lineTo(endX, endY);
                 ctx.stroke();
             }
-            const coreSize = Math.random() * 0.5 + 2.8;
+
+            const coreSize = size * 0.15;
             const coreGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, coreSize);
             coreGradient.addColorStop(0, `rgba(255, 255, 255, 1)`);
             coreGradient.addColorStop(0.3, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`);
@@ -446,52 +494,63 @@
             ctx.beginPath();
             ctx.arc(centerX, centerY, coreSize, 0, Math.PI * 2);
             ctx.fill();
+
             return new THREE.CanvasTexture(canvas);
         }
         
         function createGalaxy() {
             const starColors = [ new THREE.Color("#FFFFFF"), new THREE.Color("#FEF08A"), new THREE.Color("#A5F3FC"), new THREE.Color("#FBCFE8"), new THREE.Color("#FFD8B1") ];
-            const whiteStarTexture = createStarFlareTexture("#FFFFFF");
-            const galaxyStarVertices = [];
-            const galaxyStarColors = [];
             const numGalaxyStars = 40000;
             const galaxyRadius = 800;
             const galaxyArms = 4;
             const armTightness = 0.5;
 
-            for (let i = 0; i < numGalaxyStars; i++) {
-                const pos = new THREE.Vector3();
-                const angle = (i % (numGalaxyStars / galaxyArms)) / (numGalaxyStars / galaxyArms) * Math.PI * 2;
-                const distance = Math.pow(Math.random(), 2) * galaxyRadius;
-                const spiral = angle * armTightness;
-                const armIndex = Math.floor(i / (numGalaxyStars / galaxyArms));
-                const armAngle = (armIndex / galaxyArms) * Math.PI * 2;
-                pos.x = Math.cos(angle + spiral + armAngle) * distance;
-                const y_bulge = (Math.random() - 0.5) * 120 * Math.pow(1 - distance / galaxyRadius, 2);
-                const y_disk = (Math.random() - 0.5) * 20;
-                pos.y = y_bulge + y_disk;
-                pos.z = Math.sin(angle + spiral + armAngle) * distance;
-                galaxyStarVertices.push(pos.x, pos.y, pos.z);
-                const color = starColors[Math.floor(Math.random() * starColors.length)];
-                galaxyStarColors.push(color.r, color.g, color.b);
+            const numVariations = 10;
+            const starsPerVariation = numGalaxyStars / numVariations;
+
+            for (let v = 0; v < numVariations; v++) {
+                const variationVertices = [];
+                const variationColors = [];
+                
+                // Each variation group gets a unique texture and material
+                const starTexture = createStarFlareTexture("#FFFFFF");
+                const galaxyMaterial = new THREE.PointsMaterial({
+                    map: starTexture,
+                    size: THREE.MathUtils.randFloat(4, 8), // Randomize size per group
+                    transparent: true,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    sizeAttenuation: true,
+                    vertexColors: true
+                });
+
+                for (let i = 0; i < starsPerVariation; i++) {
+                    const pos = new THREE.Vector3();
+                    const globalIndex = v * starsPerVariation + i;
+                    const angle = (globalIndex % (numGalaxyStars / galaxyArms)) / (numGalaxyStars / galaxyArms) * Math.PI * 2;
+                    const distance = Math.pow(Math.random(), 2) * galaxyRadius;
+                    const spiral = angle * armTightness;
+                    const armIndex = Math.floor(globalIndex / (numGalaxyStars / galaxyArms));
+                    const armAngle = (armIndex / galaxyArms) * Math.PI * 2;
+                    pos.x = Math.cos(angle + spiral + armAngle) * distance;
+                    const y_bulge = (Math.random() - 0.5) * 120 * Math.pow(1 - distance / galaxyRadius, 2);
+                    const y_disk = (Math.random() - 0.5) * 20;
+                    pos.y = y_bulge + y_disk;
+                    pos.z = Math.sin(angle + spiral + armAngle) * distance;
+                    variationVertices.push(pos.x, pos.y, pos.z);
+                    const color = starColors[Math.floor(Math.random() * starColors.length)];
+                    variationColors.push(color.r, color.g, color.b);
+                }
+
+                const galaxyGeometry = new THREE.BufferGeometry();
+                galaxyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(variationVertices, 3));
+                galaxyGeometry.setAttribute('color', new THREE.Float32BufferAttribute(variationColors, 3));
+
+                const starfield = new THREE.Points(galaxyGeometry, galaxyMaterial);
+                galaxyStarfields.push(starfield); // Add to global array for filtering
+                scene.add(starfield);
             }
 
-            const galaxyGeometry = new THREE.BufferGeometry();
-            galaxyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(galaxyStarVertices, 3));
-            galaxyGeometry.setAttribute('color', new THREE.Float32BufferAttribute(galaxyStarColors, 3));
-            
-            const galaxyMaterial = new THREE.PointsMaterial({
-                map: whiteStarTexture,
-                size: 6,
-                transparent: true,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                sizeAttenuation: true,
-                vertexColors: true
-            });
-
-            galaxyStarfield = new THREE.Points(galaxyGeometry, galaxyMaterial);
-            scene.add(galaxyStarfield);
 
             const kaminoPosition = new THREE.Vector3(-850, 30, 50);
             const kaminoStarCount = 2000;
@@ -516,8 +575,15 @@
             kaminoGeometry.setAttribute('position', new THREE.Float32BufferAttribute(kaminoStarVertices, 3));
             kaminoGeometry.setAttribute('color', new THREE.Float32BufferAttribute(kaminoStarColors, 3));
             
-            const kaminoMaterial = galaxyMaterial.clone();
-            kaminoMaterial.size = 4;
+            const kaminoMaterial = new THREE.PointsMaterial({
+                map: createStarFlareTexture("#A5F3FC"),
+                size: 4,
+                transparent: true,
+                blending: THREE.AdditiveBlending,
+                depthWrite: false,
+                sizeAttenuation: true,
+                vertexColors: true
+            });
 
             kaminoCluster = new THREE.Points(kaminoGeometry, kaminoMaterial);
             kaminoCluster.position.copy(kaminoPosition);
@@ -714,22 +780,32 @@
         }
 
         function createCustomStars() {
-            const starTexture = createStarFlareTexture("#FFFFFF");
-             const starMaterial = new THREE.SpriteMaterial({
-                map: starTexture,
-                blending: THREE.AdditiveBlending,
-                depthWrite: false,
-                transparent: true,
-                sizeAttenuation: true
-            });
-
             customStarData.forEach(s => {
+                // Create a unique texture and material for each custom star
+                const starTexture = createStarFlareTexture(s.color || "#FFFFFF");
+                const starMaterial = new THREE.SpriteMaterial({
+                    map: starTexture,
+                    blending: THREE.AdditiveBlending,
+                    depthWrite: false,
+                    transparent: true,
+                    sizeAttenuation: true
+                });
+
                 const sprite = new THREE.Sprite(starMaterial);
-                sprite.scale.set(10, 10, 1);
+                
+                // Randomize the scale for each star
+                const randomScale = s.scale ? THREE.MathUtils.randFloat(s.scale.min, s.scale.max) : THREE.MathUtils.randFloat(9, 16);
+                sprite.scale.set(randomScale, randomScale, 1);
+                
                 sprite.position.copy(s.position);
+                
+                // Add userData for click events
+                sprite.userData = s;
+                customStarSprites.push(sprite);
+                
                 scene.add(sprite);
 
-                const starLabel = createLabel(s.name, sprite, 8);
+                const starLabel = createLabel(s.name, sprite, randomScale * 0.75);
                 searchableObjects.push({ name: s.name, type: 'star', object3d: sprite, label: starLabel });
             });
         }
@@ -761,6 +837,9 @@
             document.querySelectorAll('#filter-controls input[type="checkbox"]').forEach(checkbox => {
                 checkbox.addEventListener('change', updateFilters);
             });
+
+            // View Toggle
+            document.getElementById('view-toggle-btn').addEventListener('click', toggleTopDownView);
         }
         
         function onMouseClick(event) {
@@ -768,20 +847,55 @@
             mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
             mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
             raycaster.setFromCamera(mouse, camera);
+            
+            // Check for planet clicks
             const intersects = raycaster.intersectObjects(planetMeshes, true);
             if (intersects.length > 0) {
                 const clickedPlanetData = intersects[0].object.userData;
                 showModal(clickedPlanetData);
+                return; // Exit after finding a planet
+            }
+            
+            // Check for custom star clicks
+            const starIntersects = raycaster.intersectObjects(customStarSprites, false);
+             if (starIntersects.length > 0) {
+                const clickedStarData = starIntersects[0].object.userData;
+                showModal(clickedStarData);
             }
         }
         
         function showModal(data) {
+            const modalContent = document.getElementById('modal-content');
             document.getElementById('planet-name').textContent = data.name;
             document.getElementById('planet-description').textContent = data.info.description;
-            document.getElementById('planet-landmarks').textContent = data.info.landmarks;
-            document.getElementById('planet-faction').textContent = data.info.faction;
-            document.getElementById('planet-status').textContent = data.info.status;
-            document.getElementById('planet-species').textContent = data.info.species;
+
+            // Check if it's a planet or a star
+            if (data.design) { // Planets have a 'design' property
+                modalContent.querySelector('#planet-landmarks').parentElement.style.display = 'block';
+                modalContent.querySelector('#planet-faction').parentElement.style.display = 'block';
+                modalContent.querySelector('#planet-status').parentElement.style.display = 'block';
+                modalContent.querySelector('#planet-species').parentElement.style.display = 'block';
+                document.getElementById('explore-button').style.display = 'block';
+
+                modalContent.querySelector('#planet-landmarks').parentElement.querySelector('strong').textContent = 'Major Landmarks:';
+                document.getElementById('planet-landmarks').textContent = data.info.landmarks;
+                document.getElementById('planet-faction').textContent = data.info.faction;
+                document.getElementById('planet-status').textContent = data.info.status;
+                document.getElementById('planet-species').textContent = data.info.species;
+            } else { // It's a star
+                modalContent.querySelector('#planet-landmarks').parentElement.style.display = 'block';
+                modalContent.querySelector('#planet-faction').parentElement.style.display = 'block';
+                modalContent.querySelector('#planet-status').parentElement.style.display = 'none';
+                modalContent.querySelector('#planet-species').parentElement.style.display = 'none';
+                document.getElementById('explore-button').style.display = 'none';
+                
+                modalContent.querySelector('#planet-landmarks').parentElement.querySelector('strong').textContent = 'Star Type:';
+                document.getElementById('planet-landmarks').textContent = data.info.type;
+
+                modalContent.querySelector('#planet-faction').parentElement.querySelector('strong').textContent = 'Status:';
+                document.getElementById('planet-faction').textContent = data.info.status;
+            }
+
             document.getElementById('modal').style.display = 'block';
         }
 
@@ -809,7 +923,7 @@
                     div.onclick = () => {
                         document.getElementById('search-input').value = item.name;
                         suggestionsContainer.style.display = 'none';
-                        startFlyTo(item.object3d);
+                        startFlyToObject(item.object3d);
                     };
                     suggestionsContainer.appendChild(div);
                 });
@@ -827,32 +941,70 @@
                 stardust: document.getElementById('filter-stardust').checked,
             };
 
+            // Toggle entire solar systems based on the planet filter
+            orbitalSystems.forEach(sys => {
+                sys.systemGroup.visible = filters.planet;
+            });
+
+            // Toggle individual objects based on their own filters
+            // This allows hiding suns/moons even if their system is visible
             searchableObjects.forEach(obj => {
-                const isVisible = filters[obj.type];
-                obj.object3d.visible = isVisible;
-                obj.label.visible = isVisible;
+                // Stars are independent of solar systems
+                if (obj.type === 'star') {
+                    obj.object3d.visible = filters.star;
+                    obj.label.visible = filters.star;
+                }
+                // Suns and moons are part of systems, but can be toggled individually
+                else if (obj.type === 'sun' || obj.type === 'moon') {
+                    obj.object3d.visible = filters[obj.type];
+                    obj.label.visible = filters[obj.type];
+                }
+                // Planet visibility is handled by the systemGroup toggle above,
+                // but we need to toggle the label here.
+                else if (obj.type === 'planet') {
+                     obj.label.visible = filters.planet;
+                }
             });
             
-            galaxyStarfield.visible = filters.stardust;
+            galaxyStarfields.forEach(sf => sf.visible = filters.stardust);
             kaminoCluster.visible = filters.stardust;
         }
-
-        function startFlyTo(targetObject) {
+        
+        function flyCameraTo(position, target) {
             isFlying = true;
             flyStartTime = Date.now();
             controls.enabled = false;
 
+            flyStartPos = camera.position.clone();
+            flyEndPos = position;
+            flyStartTarget = controls.target.clone();
+            flyEndTarget = target;
+        }
+
+        function startFlyToObject(targetObject) {
             const targetPosition = new THREE.Vector3();
             targetObject.getWorldPosition(targetPosition);
             
-            flyStartPos = camera.position.clone();
-            flyStartTarget = controls.target.clone();
-            flyEndTarget = targetPosition;
-
             // Calculate an offset end position for the camera
             const distance = targetObject.type === 'star' ? 100 : 40;
             const direction = new THREE.Vector3().subVectors(camera.position, controls.target).normalize();
-            flyEndPos = targetPosition.clone().add(direction.multiplyScalar(distance));
+            const cameraEndPos = targetPosition.clone().add(direction.multiplyScalar(distance));
+            
+            flyCameraTo(cameraEndPos, targetPosition);
+        }
+
+        function toggleTopDownView() {
+            const btn = document.getElementById('view-toggle-btn');
+            isTopDown = !isTopDown;
+            if (isTopDown) {
+                flyCameraTo(topDownPos.clone(), new THREE.Vector3(0,0,0));
+                controls.enableRotate = false;
+                btn.textContent = 'Perspective View';
+            } else {
+                flyCameraTo(perspectivePos.clone(), new THREE.Vector3(0,0,0));
+                controls.enableRotate = true;
+                btn.textContent = 'Top-Down View';
+            }
         }
 
         // --- ANIMATION LOOP ---
@@ -867,15 +1019,14 @@
 
                 camera.position.lerpVectors(flyStartPos, flyEndPos, easeProgress);
                 controls.target.lerpVectors(flyStartTarget, flyEndTarget, easeProgress);
-                camera.lookAt(controls.target);
-
+                
                 if (progress >= 1.0) {
                     isFlying = false;
                     controls.enabled = true;
                 }
-            } else {
-                 controls.update();
-            }
+            } 
+            
+            controls.update();
 
             scene.rotation.y += 0.00005;
 
@@ -915,7 +1066,9 @@
                     const objPosition = new THREE.Vector3();
                     obj.object3d.getWorldPosition(objPosition);
                     const distance = cameraPosition.distanceTo(objPosition);
-                    obj.label.element.style.opacity = Math.max(0, 1 - (distance / 400));
+                    let maxVisibleDistance = (obj.type === 'planet' || obj.type === 'star') ? 800 : 400;
+                    const opacity = Math.max(0, 1.0 - (distance / maxVisibleDistance));
+                    obj.label.element.style.opacity = opacity;
                 }
             });
 
