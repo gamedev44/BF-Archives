@@ -421,7 +421,7 @@
             const rayCount = Math.floor(Math.random() * 6) + 4;
             const rayLength = size * 0.4;
             const rayOpacity = Math.random() * 0.2 + 0.1;
-            const rayRandomness = Math.random() * 5;
+            const rayRandomness = Math.random() * 0.5 + 2.8;
             for (let i = 0; i < rayCount; i++) {
                 const angle = (i / rayCount) * Math.PI * 2 + (Math.random() - 0.5) * rayRandomness;
                 const length = rayLength * (1 + (Math.random() - 0.5) * rayRandomness);
@@ -437,7 +437,7 @@
                 ctx.lineTo(endX, endY);
                 ctx.stroke();
             }
-            const coreSize = size * 0.15;
+            const coreSize = Math.random() * 0.5 + 2.8;
             const coreGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, coreSize);
             coreGradient.addColorStop(0, `rgba(255, 255, 255, 1)`);
             coreGradient.addColorStop(0.3, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`);
@@ -943,3 +943,4 @@
     </script>
 </body>
 </html>
+
