@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Galactic Starmap</title>
+    <title>3D Galactic Starmap</title>
     <style>
         body {
             margin: 0;
@@ -11,48 +11,52 @@
             background-color: #000000;
             font-family: 'Inter', sans-serif;
             color: #ffffff;
-            cursor: grab;
-        }
-        body:active {
-            cursor: grabbing;
         }
         canvas {
             display: block;
-            position: absolute;
-            top: 0;
-            left: 0;
-            z-index: 1;
         }
-        .label-container {
-            position: absolute;
+        #loading-screen {
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            pointer-events: none;
-            z-index: 2;
+            background-color: #000000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 200;
+            transition: opacity 1s ease-out;
         }
-        .label, .region-label {
-            position: absolute;
-            background: rgba(0, 0, 0, 0.6);
-            border-radius: 4px;
-            pointer-events: none;
-            transform: translate(-50%, -50%); /* Center the label */
-            will-change: transform, opacity;
-            white-space: nowrap;
+        #loading-screen.fade-out {
+            opacity: 0;
+        }
+        #loading-text {
+            font-size: 1.5rem;
+            color: #00aaff;
+            text-shadow: 0 0 10px #00aaff, 0 0 20px #00aaff;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.5; }
+            50% { opacity: 1; }
+            100% { opacity: 0.5; }
         }
         .label {
             color: #fff;
             font-family: sans-serif;
-            padding: 2px 5px;
+            padding: 2px;
+            background: rgba(0, 0, 0, 0.6);
+            border-radius: 4px;
+            pointer-events: none; /* Important so clicks pass through to the canvas */
             font-size: 14px;
         }
         .region-label {
             color: #ffc107;
             font-weight: bold;
-            text-shadow: 0 0 4px #ffc107, 0 0 8px #ffc107;
-            background: none;
-            transition: font-size 0.1s ease-out;
+            text-shadow: 0 0 5px #ffc107, 0 0 10px #ffc107;
+            pointer-events: none;
+            transition: font-size 0.1s ease-out; /* Smooth scaling */
         }
         #modal {
             position: absolute;
@@ -125,18 +129,19 @@
             background: rgba(0,0,0,0.5);
             padding: 10px;
             border-radius: 5px;
-            z-index: 3;
+            z-index: 10;
         }
     </style>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap" rel="stylesheet">
 </head>
 <body>
+    <div id="loading-screen">
+        <div id="loading-text">TRANSMISSION LOADING...</div>
+    </div>
+
     <div id="info-box">
         Use your mouse to rotate (left-click & drag), pan (right-click & drag), and zoom (scroll).
     </div>
-
-    <canvas id="starmap-canvas"></canvas>
-    <div id="label-container" class="label-container"></div>
 
     <div id="modal">
         <div id="modal-content">
@@ -151,393 +156,499 @@
         <button id="close-modal">&times;</button>
     </div>
 
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const canvas = document.getElementById('starmap-canvas');
+    <script async src="https://unpkg.com/es-module-shims@1.6.3/dist/es-module-shims.js"></script>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.157.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.157.0/examples/jsm/"
+        }
+    }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
+        import { createNoise2D } from 'https://cdn.skypack.dev/simplex-noise';
+
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 5000);
+        camera.position.set(0, 250, 550);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        const labelRenderer = new CSS2DRenderer();
+        labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        labelRenderer.domElement.style.position = 'absolute';
+        labelRenderer.domElement.style.top = '0px';
+        document.body.appendChild(labelRenderer.domElement);
+
+        const controls = new OrbitControls(camera, labelRenderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.minDistance = 10;
+        controls.maxDistance = 2000;
+        
+        // --- LIGHTING ---
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.2);
+        scene.add(ambientLight);
+        const coreGlow = new THREE.PointLight(0xffeab3, 2, 800);
+        coreGlow.position.set(0,0,0);
+        scene.add(coreGlow);
+
+
+        // --- CELESTIAL DATABASE ---
+        const planetData = [
+            { 
+                name: "Coruscant", 
+                position: new THREE.Vector3(25, 2, -30), 
+                info: { description: "An ecumenopolis, a city-covered planet, that for millennia served as the capital of the Republic and the Empire that followed.", landmarks: "Galactic Senate, Jedi Temple, Imperial Palace", faction: "Galactic Empire / New Republic", status: "Contested", species: "Human, various" },
+                design: { noiseScale: 50, terrainHeight: 5, waterLevel: 0, landColor: "#555555", waterColor: "#000000", atmo1Size: 0.03, atmo1Opacity: 0.7, atmo1Color: "#fde047", atmo2Size: 0.1, atmo2Opacity: 0.2, atmo2Color: "#ffffff" },
+                sun: { size: 5, color: 0xffff00, distance: 40, speed: 0.001 },
+                moons: [ { name: "Centax-1", size: 0.5, color: 0x808080, distance: 8, speed: 0.02 } ]
+            },
+            { 
+                name: "Naboo",
+                position: new THREE.Vector3(250, 20, 400),
+                info: { description: "A lush, idyllic world known for its peaceful human population and the amphibious Gungans.", landmarks: "Theed Royal Palace, Otoh Gunga", faction: "Galactic Empire (nominal), local resistance", status: "Peaceful", species: "Human, Gungan" },
+                design: { noiseScale: 200, terrainHeight: 30, waterLevel: 55, landColor: "#22c55e", waterColor: "#06b6d4", atmo1Size: 0.06, atmo1Opacity: 0.8, atmo1Color: "#67e8f9", atmo2Size: 0.2, atmo2Opacity: 0.3, atmo2Color: "#ffffff" },
+                sun: { size: 6, color: 0xfef08a, distance: 50, speed: 0.0009 },
+                moons: [
+                    { name: "Ohma-D'un", size: 0.7, color: 0x00ced1, distance: 10, speed: 0.018 },
+                    { name: "Veruna", size: 0.4, color: 0x9370db, distance: 16, speed: 0.011 }
+                ]
+            },
+            { 
+                name: "Tatooine", 
+                position: new THREE.Vector3(300, 5, -550), 
+                info: { description: "A harsh desert world orbiting two suns. A haven for smugglers and criminals.", landmarks: "Mos Eisley Spaceport, Jabba's Palace, Lars Homestead", faction: "Hutt Cartel", status: "Hostile", species: "Human, Jawa, Tusken Raider" },
+                design: { noiseScale: 250, terrainHeight: 15, waterLevel: 5, landColor: "#ca8a04", waterColor: "#facc15", atmo1Size: 0.04, atmo1Opacity: 0.5, atmo1Color: "#fde047", atmo2Size: 0.2, atmo2Opacity: 0.1, atmo2Color: "#fef08a" },
+                sun: [
+                    { size: 7, color: 0xff4500, separation: 15, speed: 0.002 },
+                    { size: 6, color: 0xffd700, separation: 15, speed: 0.002 }
+                ],
+                planetOrbit: { distance: 60, speed: 0.0007 },
+                moons: [ { name: "Ghomrassen", size: 0.4, color: 0xa52a2a, distance: 7, speed: 0.012 }, { name: "Guermessa", size: 0.3, color: 0x8B4513, distance: 11, speed: 0.009 } ]
+            },
+        ];
+        
+        const regionData = [
+            { name: 'CORE', radius: 60, position: new THREE.Vector3(0, 10, 0) }, 
+            { name: 'COLONIES', radius: 120, position: new THREE.Vector3(100, 15, 100) },
+            { name: 'INNER RIM', radius: 250, position: new THREE.Vector3(170, -30, -200) }, 
+            { name: 'EXPANSION REGION', radius: 320, position: new THREE.Vector3(320, 45, 0) },
+            { name: 'MID RIM', radius: 500, position: new THREE.Vector3(400, -60, 300) }, 
+            { name: 'OUTER RIM', radius: 750, position: new THREE.Vector3(450, 80, 600) },
+            { name: 'UNKNOWN REGIONS', radius: 0, position: new THREE.Vector3(-800, 30, 50) }
+        ];
+
+        // --- GALAXY CREATION ---
+        
+        function hexToRgb(hex) {
+            const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+            return result ? { r: parseInt(result[1], 16), g: parseInt(result[2], 16), b: parseInt(result[3], 16) } : null;
+        }
+
+        function createStarFlareTexture(colorStr) {
+            const size = 128;
+            const canvas = document.createElement('canvas');
+            canvas.width = size;
+            canvas.height = size;
             const ctx = canvas.getContext('2d');
-            const labelContainer = document.getElementById('label-container');
-
-            let width = window.innerWidth;
-            let height = window.innerHeight;
-            canvas.width = width;
-            canvas.height = height;
-
-            // --- Camera and Controls Setup ---
-            const camera = {
-                x: 0, y: 250, z: 1200, // Initial position is further out
-                pitch: -0.2, // Rotation around X-axis
-                yaw: 0,      // Rotation around Y-axis
-                panX: 0, panY: 0, panZ: 0, // Pan offset
-                fov: 500,    // Field of view determines perspective
-                minZoom: 100,
-                maxZoom: 3000
-            };
-
-            const mouse = {
-                x: 0, y: 0,
-                lastX: 0, lastY: 0,
-                isLeftDown: false,
-                isRightDown: false,
-            };
-
-            // --- CELESTIAL DATABASE (1:1 from original) ---
-            const planetData = [
-                // Data is extensive, so it is collapsed for readability.
-                // It is identical to the data you provided.
-                { name: "Coruscant", position: {x: 25, y: 2, z: -30}, info: { description: "An ecumenopolis, a city-covered planet, that for millennia served as the capital of the Republic and the Empire that followed.", landmarks: "Galactic Senate, Jedi Temple, Imperial Palace", faction: "Galactic Empire / New Republic", status: "Contested", species: "Human, various" } },
-                { name: "Corellia", position: {x: 32, y: 5, z: 25}, info: { description: "A major shipbuilding world and the birthplace of many famous smugglers and pilots.", landmarks: "Coronet City, Shipyards of Corellia", faction: "Galactic Empire / Corellian Resistance", status: "Contested", species: "Human, Selonians, Drall" } },
-                { name: "Kuat", position: {x: 58, y: -5, z: -20}, info: { description: "A vital industrial world, famed for its orbital shipyards, Kuat Drive Yards.", landmarks: "Kuat Drive Yards Orbital Array", faction: "Galactic Empire", status: "Hostile", species: "Human" } },
-                { name: "Hosnian Prime", position: {x: 5, y: 8, z: 90}, info: { description: "The capital of the New Republic before its destruction by the First Order.", landmarks: "Republic Senate, Galactic Museum", faction: "New Republic (destroyed)", status: "Destroyed", species: "Various" } },
-                { name: "Takodana", position: {x: -280, y: 10, z: 250}, info: { description: "A lush, neutral world that was home to Maz Kanata's castle for over a thousand years.", landmarks: "Maz's Castle", faction: "Neutral", status: "Peaceful", species: "Various" } },
-                { name: "Ring of Kafrene", position: {x: -100, y: 12, z: -150}, info: { description: "An asteroid cluster and trading post in the Colonies region.", landmarks: "The Spire, Mining Tunnels", faction: "Galactic Empire (presence)", status: "Contested", species: "Various" } },
-                { name: "Onderon", position: {x: 150, y: 10, z: 10}, info: { description: "A jungle world with a walled city, known for its fierce beasts and rebellious spirit.", landmarks: "Iziz (capital city)", faction: "Saw Gerrera's Partisans", status: "Contested", species: "Human" } },
-                { name: "Jakku", position: {x: -250, y: -8, z: 50}, info: { description: "A remote desert planet, site of a pivotal battle, littered with starship wreckage.", landmarks: "Starship Graveyard, Niima Outpost", faction: "Neutral", status: "Neutral", species: "Human, Teedo" } },
-                { name: "Jedha", position: {x: -280, y: -5, z: -100}, info: { description: "A small, cold desert moon, a spiritual center for believers in the Force, destroyed by the Death Star.", landmarks: "Temple of the Kyber, Holy City", faction: "Partisans (formerly)", status: "Destroyed", species: "Human, various pilgrims" } },
-                { name: "Dantooine", position: {x: 20, y: 20, z: 220}, info: { description: "A sparsely populated world of savannas, once home to a Rebel Alliance base.", landmarks: "Abandoned Rebel Base, Dantari villages", faction: "Neutral", status: "Peaceful", species: "Human, Dantari" } },
-                { name: "Lah'mu", position: {x: 100, y: -12, z: 240}, info: { description: "A remote world with black sand beaches where Galen Erso's family hid from the Empire.", landmarks: "Erso Homestead", faction: "Neutral", status: "Neutral", species: "None" } },
-                { name: "Ajilon Kloss", position: {x: 90, y: 25, z: 180}, info: { description: "A jungle world that served as a temporary base for the Resistance.", landmarks: "Resistance Base", faction: "Resistance", status: "Peaceful", species: "None specified" } },
-                { name: "Mimban", position: {x: 120, y: -8, z: -150}, info: { description: "A swampy, fog-shrouded world known for its Imperial mining operations and fierce local resistance.", landmarks: "Imperial Mining Complex", faction: "Galactic Empire", status: "Hostile", species: "Mimbanese" } },
-                { name: "Pasaana", position: {x: 250, y: 5, z: -280}, info: { description: "A desert planet known for its vibrant Festival of the Ancestors.", landmarks: "Forbidden Valley, Festival Grounds", faction: "Neutral", status: "Peaceful", species: "Aki-Aki, Human" } },
-                { name: "Naboo", position: {x: 250, y: 20, z: 400}, info: { description: "A lush, idyllic world known for its peaceful human population and the amphibious Gungans.", landmarks: "Theed Royal Palace, Otoh Gunga", faction: "Galactic Empire (nominal), local resistance", status: "Peaceful", species: "Human, Gungan" } },
-                { name: "Malastare", position: {x: 50, y: -10, z: -500}, info: { description: "A dusty world, home to the Dug species and rich in fuel reserves.", landmarks: "Sebulba's Podracing Track", faction: "Various criminal elements", status: "Hostile", species: "Dug, Gran" } },
-                { name: "Kashyyyk", position: {x: 250, y: -15, z: -350}, info: { description: "The temperate forest homeworld of the Wookiees.", landmarks: "Kachirho, Thicket of Meditation", faction: "Wookiee Resistance", status: "Peaceful (to allies)", species: "Wookiee" } },
-                { name: "Ord Mantell", position: {x: -100, y: 18, z: 280}, info: { description: "A planet of junk fields, a haven for bounty hunters and smugglers.", landmarks: "Junkyard Scrapyards, Port of Ord Mantell", faction: "Criminal Underworld", status: "Hostile", species: "Various" } },
-                { name: "Ithor", position: {x: -50, y: 25, z: 230}, info: { description: "A jungle planet, home to the peaceful Ithorians who live in floating herd-ships.", landmarks: "Tafanda Bay, Herd Ships", faction: "Ithorian Government", status: "Peaceful", species: "Ithorian" } },
-                { name: "Dathomir", position: {x: 50, y: 0, z: 290}, info: { description: "A remote, red-tinged world steeped in the dark side, home to the Nightsisters.", landmarks: "Nightsister Fortress, Nightbrother Village", faction: "Nightsisters / Nightbrothers", status: "Hostile", species: "Zabrak (Nightbrother), Dathomirian (Nightsister)" } },
-                { name: "Mandalore", position: {x: 200, y: 10, z: 250}, info: { description: "Homeworld of the Mandalorians. Its surface was devastated, forcing its people into domed cities.", landmarks: "Sundari (capital), Mines of Mandalore", faction: "Mandalorian Clans", status: "Contested", species: "Human (Mandalorian)" } },
-                { name: "Wobani", position: {x: 300, y: -5, z: 300}, info: { description: "A bleak world used by the Empire as the site of a labor camp.", landmarks: "Imperial Penal Colony", faction: "Galactic Empire", status: "Hostile", species: "Various" } },
-                { name: "Lothal", position: {x: 400, y: 8, z: 380}, info: { description: "An Outer Rim world of grassy plains that became a focal point for early Rebel activity.", landmarks: "Capital City, Jedi Temple", faction: "Rebel Alliance / Galactic Empire", status: "Contested", species: "Human, Loth-cat" } },
-                { name: "Kijimi", position: {x: 380, y: 15, z: 200}, info: { description: "A mountainous, snow-covered planet, a haven for smugglers, destroyed by the First Order.", landmarks: "Thieves' Quarter, Spice Den of Zorii Bliss", faction: "Spice Runners of Kijimi", status: "Destroyed", species: "Human, various" } },
-                { name: "Eadu", position: {x: 350, y: -20, z: 100}, info: { description: "A storm-wracked, mountainous world with a secret Imperial kyber crystal research facility.", landmarks: "Imperial Energy Research Facility", faction: "Galactic Empire", status: "Hostile", species: "None" } },
-                { name: "Kessel", position: {x: 300, y: 0, z: 50}, info: { description: "A prison planet where the Empire mined valuable spice from its dangerous tunnels.", landmarks: "Spice Mines of Kessel, Kessel Run maw", faction: "Pyke Syndicate / Galactic Empire", status: "Hostile", species: "Various prisoners" } },
-                { name: "Nal Hutta", position: {x: 280, y: -10, z: -50}, info: { description: "The polluted, swampy homeworld of the Hutts, capital of their criminal empire.", landmarks: "Gardulla's Palace, Bilbousa Bazaar", faction: "Hutt Cartel", status: "Hostile", species: "Hutt" } },
-                { name: "Vandor", position: {x: 290, y: -12, z: -200}, info: { description: "A rugged, mountainous planet with a cold climate, site of the 'Conveyex' train heist.", landmarks: "Fort Ypso, Imperial Train Line", faction: "Crimson Dawn / Galactic Empire", status: "Contested", species: "Various" } },
-                { name: "Sinta", position: {x: 280, y: -14, z: -100}, info: { description: "A planet in the Mid Rim.", landmarks: "Unknown", faction: "Unknown", status: "Unknown", species: "Unknown" } },
-                { name: "Yavin", position: {x: 250, y: 30, z: 350}, info: { description: "A gas giant with several moons, the fourth of which housed the headquarters of the Rebel Alliance.", landmarks: "Great Temple (Massassi)", faction: "Rebel Alliance (formerly)", status: "Neutral", species: "Woolamander" } },
-                { name: "Moraband", position: {x: 350, y: 40, z: 450}, info: { description: "The ancient homeworld of the Sith, a desolate planet of red rock covered in the tombs of Dark Lords.", landmarks: "Valley of the Dark Lords", faction: "None (Sith spirits)", status: "Hostile (Dark Side energy)", species: "Sith Species (extinct)" } },
-                { name: "Felucia", position: {x: 480, y: 22, z: 500}, info: { description: "A vibrant, fungal jungle world teeming with colorful, and often dangerous, flora and fauna.", landmarks: "Ancient Abyss, Nigkoe Swamp", faction: "Neutral (wild)", status: "Hostile (environment)", species: "Felucian" } },
-                { name: "Cantonica", position: {x: 550, y: 25, z: 480}, info: { description: "A desert world, home to the casino city of Canto Bight.", landmarks: "Canto Bight Casino", faction: "Neutral (wealthy elite)", status: "Neutral", species: "Various" } },
-                { name: "Tatooine", position: {x: 300, y: 5, z: -550}, info: { description: "A harsh desert world in the Outer Rim, orbiting two suns. A haven for smugglers and criminals.", landmarks: "Mos Eisley Spaceport, Jabba's Palace, Lars Homestead", faction: "Hutt Cartel", status: "Hostile", species: "Human, Jawa, Tusken Raider" } },
-                { name: "Geonosis", position: {x: 250, y: -15, z: -600}, info: { description: "A rocky, arid world, home to the insectoid Geonosians who built droids for the Separatists.", landmarks: "Petranaki Arena, Droid Factories", faction: "Separatist Alliance (formerly)", status: "Neutral (sterilized)", species: "Geonosian" } },
-                { name: "Scarif", position: {x: 350, y: 10, z: -450}, info: { description: "A tropical world, the Empire's primary archival facility for top-secret projects like the Death Star.", landmarks: "Citadel Tower, Imperial Security Complex", faction: "Galactic Empire", status: "Destroyed", species: "Human" } },
-                { name: "Savareen", position: {x: 200, y: -5, z: -680}, info: { description: "A desert planet with vast oceans, known for its production of unrefined coaxium.", landmarks: "Coaxium Refinery", faction: "Crimson Dawn", status: "Hostile", species: "Human" } },
-                { name: "D'Qar", position: {x: 240, y: 20, z: 470}, info: { description: "A lush, green world that housed the main base of the Resistance.", landmarks: "Resistance Base", faction: "Resistance (formerly)", status: "Neutral", species: "None" } },
-                { name: "Crait", position: {x: 0, y: 0, z: -650}, info: { description: "A mineral world with a salt surface over red soil, site of an old Rebel outpost.", landmarks: "Abandoned Rebel Outpost", faction: "Resistance", status: "Contested", species: "Vulptex" } },
-                { name: "Sullust", position: {x: -100, y: -20, z: -600}, info: { description: "A barren, volcanic world, its inhabitants, the Sullustans, live in subterranean cities.", landmarks: "Sorosuub Corporation Headquarters", faction: "Rebel Alliance / Sullustan Government", status: "Peaceful", species: "Sullustan" } },
-                { name: "Bespin", position: {x: -350, y: 25, z: -650}, info: { description: "A gas giant known for the Tibanna gas mining colony, Cloud City.", landmarks: "Cloud City, Tibanna Gas Mines", faction: "Cloud City Administration", status: "Contested", species: "Human, Ugnaught" } },
-                { name: "Hoth", position: {x: -450, y: 30, z: -600}, info: { description: "An icy, remote planet that was chosen by the Rebel Alliance for a hidden base.", landmarks: "Echo Base", faction: "Rebel Alliance (formerly)", status: "Neutral (uninhabited)", species: "Tauntaun, Wampa" } },
-                { name: "Mustafar", position: {x: 80, y: 0, z: 680}, info: { description: "A fiery volcanic world rich in minerals, used by the Separatists and later Darth Vader.", landmarks: "Vader's Castle, Klegger Corp Mining Facility", faction: "Galactic Empire", status: "Hostile", species: "Mustafarian" } },
-                { name: "Dagobah", position: {x: -150, y: -25, z: -700}, info: { description: "A swamp-covered planet, shrouded in the dark side of the Force, where Jedi Master Yoda lived in exile.", landmarks: "Yoda's Hut, Dark Side Cave", faction: "None", status: "Neutral", species: "Various swamp creatures" } },
-                { name: "Utapau", position: {x: -50, y: -30, z: -750}, info: { description: "An arid world of enormous sinkholes, within which its inhabitants built their cities.", landmarks: "Pau City, Separatist Command Center", faction: "Neutral", status: "Peaceful", species: "Pau'an, Utai" } },
-                { name: "Endor", position: {x: -280, y: 10, z: 370}, info: { description: "A forest moon, homeworld of the Ewoks, and site of the second Death Star's shield generator.", landmarks: "Bright Tree Village, Shield Generator Bunker", faction: "Ewok tribes", status: "Peaceful", species: "Ewok" } },
-                { name: "Kef Bir", position: {x: -270, y: 10, z: 395}, info: { description: "An ocean moon of Endor, covered in grassy plains and rocky mesas, where wreckage of the second Death Star fell.", landmarks: "Death Star Wreckage", faction: "Neutral", status: "Neutral", species: "Human (Company of exiled stormtroopers)" } },
-                { name: "Bothawui", position: {x: 400, y: 5, z: -200}, info: { description: "The homeworld of the Bothans, known for their galaxy-wide spy network.", landmarks: "Bothan Spynet Headquarters", faction: "Bothan Spynet / New Republic", status: "Peaceful", species: "Bothan" } },
-                { name: "Exegol", position: {x: -500, y: -50, z: -200}, info: { description: "A dark, desolate world deep within the Unknown Regions, a hidden stronghold of the Sith.", landmarks: "Sith Citadel, Throne of the Sith", faction: "Sith Eternal", status: "Hostile", species: "Sith Cultists" } },
-                { name: "Ahch-To", position: {x: -600, y: 40, z: 200}, info: { description: "A remote, ocean world, site of the first Jedi Temple and Luke Skywalker's exile.", landmarks: "First Jedi Temple, Jedi Village", faction: "None", status: "Neutral", species: "Porg, Caretakers" } },
-                { name: "Batuu", position: {x: -400, y: 10, z: 250}, info: { description: "A remote outpost on the edge of the galaxy, a crossroads for smugglers and adventurers.", landmarks: "Black Spire Outpost", faction: "Neutral", status: "Neutral", species: "Various" } },
-                { name: "Kamino", position: {x: -900, y: -50, z: 220}, info: { description: "An ocean world beyond the Outer Rim, home to the master cloners.", landmarks: "Tipoca City", faction: "Kaminoan Government", status: "Neutral", species: "Kaminoan" } },
-            ];
-            const regionData = [
-                { name: 'CORE', radius: 60, position: {x: 0, y: 10, z: 0} },
-                { name: 'COLONIES', radius: 120, position: {x: 100, y: 15, z: 100} },
-                { name: 'INNER RIM', radius: 250, position: {x: 170, y: -30, z: -200} },
-                { name: 'EXPANSION REGION', radius: 320, position: {x: 320, y: 45, z: 0} },
-                { name: 'MID RIM', radius: 500, position: {x: 400, y: -60, z: 300} },
-                { name: 'OUTER RIM', radius: 750, position: {x: 450, y: 80, z: 600} },
-                { name: 'UNKNOWN REGIONS', radius: 0, position: {x: -800, y: 30, z: 50} }
-            ];
-
-            // Add DOM elements for labels
-            planetData.forEach((p, i) => {
-                const el = document.createElement('div');
-                el.className = 'label';
-                el.textContent = p.name;
-                el.style.opacity = 0; // Initially hidden
-                labelContainer.appendChild(el);
-                p.labelElement = el;
-                p.screen = { x: 0, y: 0, z: 0, scale: 0 }; // To store projected coordinates
-            });
-
-            regionData.forEach(r => {
-                 const el = document.createElement('div');
-                el.className = 'region-label';
-                el.textContent = r.name;
-                el.style.opacity = 0; // Initially hidden
-                labelContainer.appendChild(el);
-                r.labelElement = el;
-                r.screen = { x: 0, y: 0, z: 0 }; // To store projected coordinates
-            });
-
-            // --- Galaxy Generation ---
-            let galaxyStars = [];
-            let kaminoStars = [];
-            const generateStars = () => {
-                const numGalaxyStars = 20000; // Reduced for performance in 2D canvas
-                const galaxyRadius = 700;
-                const galaxyArms = 4;
-                const armTightness = 0.5;
-
-                for (let i = 0; i < numGalaxyStars; i++) {
-                    const angle = (i % (numGalaxyStars / galaxyArms)) / (numGalaxyStars / galaxyArms) * Math.PI * 2;
-                    const distance = Math.pow(Math.random(), 2) * galaxyRadius;
-                    const spiral = angle * armTightness;
-                    const armIndex = Math.floor(i / (numGalaxyStars / galaxyArms));
-                    const armAngle = (armIndex / galaxyArms) * Math.PI * 2;
-
-                    const x = Math.cos(angle + spiral + armAngle) * distance;
-                    const y_bulge = (Math.random() - 0.5) * 120 * Math.pow(1 - distance / galaxyRadius, 2);
-                    const y_disk = (Math.random() - 0.5) * 15;
-                    const y = y_bulge + y_disk;
-                    const z = Math.sin(angle + spiral + armAngle) * distance;
-                    galaxyStars.push({x, y, z});
-                }
-            };
-            generateStars();
-
-            const generateKaminoStars = () => {
-                const kaminoPosition = { x: -900, y: -50, z: 220 };
-                const kaminoVoidRadius = 40;
-                const kaminoStarDensityRadius = 70;
-                const numKaminoStars = 44;
-
-                for (let i = 0; i < numKaminoStars; i++) {
-                    const dist = kaminoVoidRadius + Math.random() * (kaminoStarDensityRadius - kaminoVoidRadius);
-                    const theta = Math.random() * Math.PI * 2;
-                    const phi = Math.acos((Math.random() * 2) - 1);
-
-                    const x = dist * Math.sin(phi) * Math.cos(theta);
-                    const y = dist * Math.sin(phi) * Math.sin(theta) * 0.7; // Make it a bit flatter
-                    const z = dist * Math.cos(phi);
-
-                    kaminoStars.push({
-                        x: x + kaminoPosition.x,
-                        y: y + kaminoPosition.y,
-                        z: z + kaminoPosition.z
-                    });
-                }
-            };
-            generateKaminoStars();
-
-
-            // --- Core Rendering Logic ---
-            const project3D = (point) => {
-                // 1. Apply Pan
-                let x = point.x - camera.panX;
-                let y = point.y - camera.panY;
-                let z = point.z - camera.panZ;
-
-                // 2. Rotate around Y axis (Yaw)
-                const sinY = Math.sin(camera.yaw);
-                const cosY = Math.cos(camera.yaw);
-                let tempX = x, tempZ = z;
-                x = tempX * cosY + tempZ * sinY;
-                z = -tempX * sinY + tempZ * cosY;
-
-                // 3. Rotate around X axis (Pitch)
-                const sinX = Math.sin(camera.pitch);
-                const cosX = Math.cos(camera.pitch);
-                let tempY = y;
-                y = tempY * cosX - z * sinX;
-                z = tempY * sinX + z * cosX;
-                
-                // 4. Perspective Projection
-                z += camera.z; // Move camera back
-                if (z <= 0) return null; // Behind camera
-
-                const scale = camera.fov / z;
-                const screenX = Math.round((x * scale) + width / 2);
-                const screenY = Math.round(-(y * scale) + height / 2);
-
-                return { x: screenX, y: screenY, z: z, scale: scale };
-            };
-
-            const draw = () => {
-                ctx.clearRect(0, 0, width, height);
-
-                // --- Draw Core ---
-                const coreProjected = project3D({x:0, y:0, z:0});
-                if (coreProjected) {
-                    const coreRadius = Math.max(0, 40 * coreProjected.scale);
-                    const gradient = ctx.createRadialGradient(coreProjected.x, coreProjected.y, 0, coreProjected.x, coreProjected.y, coreRadius);
-                    gradient.addColorStop(0, 'rgba(255, 234, 179, 0.8)');
-                    gradient.addColorStop(0.5, 'rgba(255, 234, 179, 0.4)');
-                    gradient.addColorStop(1, 'rgba(255, 234, 179, 0)');
-                    ctx.fillStyle = gradient;
-                    ctx.beginPath();
-                    ctx.arc(coreProjected.x, coreProjected.y, coreRadius, 0, Math.PI * 2);
-                    ctx.fill();
-                }
-
-                // --- Draw Galaxy Stars ---
-                galaxyStars.forEach(star => {
-                    const p = project3D(star);
-                    if (p) {
-                        const size = Math.max(0.1, 1.5 * p.scale);
-                        const opacity = Math.min(1, Math.max(0, p.scale * 1.5));
-                        ctx.fillStyle = `rgba(255, 255, 255, ${opacity})`;
-                        ctx.fillRect(p.x, p.y, size, size);
-                    }
-                });
-                
-                // --- Draw Kamino Cluster ---
-                kaminoStars.forEach(star => {
-                    const p = project3D(star);
-                    if (p) {
-                        const size = Math.max(0.1, 1.8 * p.scale); // Slightly larger
-                        const opacity = Math.min(1, Math.max(0, p.scale * 2)); // Slightly brighter
-                        ctx.fillStyle = `rgba(170, 204, 255, ${opacity})`; // Light blue color
-                        ctx.fillRect(p.x, p.y, size, size);
-                    }
-                });
-
-                // Update planets and sort them by distance to camera
-                planetData.forEach(planet => {
-                    planet.screen = project3D(planet.position);
-                });
-                const sortedPlanets = planetData.filter(p => p.screen).sort((a, b) => b.screen.z - a.screen.z);
-                
-                // --- Draw Planets & Labels ---
-                sortedPlanets.forEach(planet => {
-                    const p = planet.screen;
-                    const planetRadius = Math.max(1, 3 * p.scale);
-
-                    // Draw Planet
-                    ctx.fillStyle = '#38bdf8';
-                    ctx.beginPath();
-                    ctx.arc(p.x, p.y, planetRadius, 0, Math.PI * 2);
-                    ctx.fill();
-
-                    // Update Label
-                    const label = planet.labelElement;
-                    label.style.transform = `translate(${p.x}px, ${p.y - 10 - planetRadius}px)`;
-                    label.style.opacity = Math.min(1, p.scale * 2.5);
-                });
-
-                // --- Update Region Labels ---
-                regionData.forEach(region => {
-                    const p = project3D(region.position);
-                    region.screen = p; // Store for potential future use
-                    const label = region.labelElement;
-                    if(p) {
-                         const distance = p.z;
-                         const baseSize = 20;
-                         const scaleFactor = 3000;
-                         let newSize = baseSize * (scaleFactor / distance);
-                         newSize = Math.max(8, Math.min(newSize, 30));
-                         label.style.fontSize = `${newSize}px`;
-                         label.style.transform = `translate(${p.x}px, ${p.y}px)`;
-                         label.style.opacity = Math.min(1, p.scale * 5);
-                    } else {
-                         label.style.opacity = 0;
-                    }
-                });
-
-                requestAnimationFrame(draw);
-            };
-
-
-            // --- Interactivity & Controls ---
-            const onMouseDown = (e) => {
-                mouse.lastX = e.clientX;
-                mouse.lastY = e.clientY;
-                if (e.button === 0) mouse.isLeftDown = true;
-                if (e.button === 2) mouse.isRightDown = true;
-            };
-
-            const onMouseUp = (e) => {
-                if (e.button === 0) mouse.isLeftDown = false;
-                if (e.button === 2) mouse.isRightDown = false;
-            };
-
-            const onMouseMove = (e) => {
-                const dx = e.clientX - mouse.lastX;
-                const dy = e.clientY - mouse.lastY;
-                if (mouse.isLeftDown) { // Rotate
-                    camera.yaw += dx * 0.005;
-                    camera.pitch -= dy * 0.005;
-                    camera.pitch = Math.max(-Math.PI/2, Math.min(Math.PI/2, camera.pitch)); // Clamp pitch
-                }
-                if (mouse.isRightDown) { // Pan
-                    const panSpeed = 0.8;
-                    // Rotate pan vector by inverse camera yaw to align with screen
-                    const sinY = Math.sin(-camera.yaw);
-                    const cosY = Math.cos(-camera.yaw);
-                    camera.panX += (dx * cosY - dy * sinY) * panSpeed;
-                    camera.panZ += (-dx * sinY - dy * cosY) * panSpeed;
-                    camera.panY -= dy * panSpeed * Math.cos(camera.pitch); // Approximate Y pan
-                }
-                mouse.lastX = e.clientX;
-                mouse.lastY = e.clientY;
-            };
-
-            const onWheel = (e) => {
-                e.preventDefault();
-                const zoomAmount = e.deltaY * 1.5;
-                camera.z = Math.max(camera.minZoom, Math.min(camera.maxZoom, camera.z + zoomAmount));
-            };
-            
-            const onClick = (e) => {
-                const rect = canvas.getBoundingClientRect();
-                const clickX = e.clientX - rect.left;
-                const clickY = e.clientY - rect.top;
-
-                // Find clicked planet (check from closest to furthest)
-                const sortedPlanets = planetData.filter(p => p.screen).sort((a, b) => a.screen.z - b.screen.z);
-
-                for (const planet of sortedPlanets) {
-                    const p = planet.screen;
-                    const radius = Math.max(5, 3 * p.scale); // Larger click target
-                    const distance = Math.sqrt(Math.pow(clickX - p.x, 2) + Math.pow(clickY - p.y, 2));
-
-                    if (distance <= radius) {
-                        showModal(planet);
-                        return; // Stop after finding the first one
-                    }
-                }
-            };
-
-
-            // --- Modal Logic ---
-            const modal = document.getElementById('modal');
-            const closeModalButton = document.getElementById('close-modal');
-
-            function showModal(data) {
-                document.getElementById('planet-name').textContent = data.name;
-                document.getElementById('planet-description').textContent = data.info.description;
-                document.getElementById('planet-landmarks').textContent = data.info.landmarks;
-                document.getElementById('planet-faction').textContent = data.info.faction;
-                document.getElementById('planet-status').textContent = data.info.status;
-                document.getElementById('planet-species').textContent = data.info.species;
-                const exploreButton = document.getElementById('explore-button');
-                const planetNameNoSpaces = data.name.replace(/[\s']/g, '');
-                exploreButton.href = `Databases/Planets Info/${planetNameNoSpaces}/${planetNameNoSpaces}GALdb.html`;
-                modal.style.display = 'block';
+            const centerX = size / 2;
+            const centerY = size / 2;
+            const rgb = hexToRgb(colorStr);
+            const haloSize = size / 2;
+            const haloOpacity = Math.random() * 0.2 + 0.1;
+            const haloGradient = ctx.createRadialGradient(centerX, centerY, haloSize / 4, centerX, centerY, haloSize);
+            haloGradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${haloOpacity})`);
+            haloGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+            ctx.fillStyle = haloGradient;
+            ctx.fillRect(0, 0, size, size);
+            const rayCount = Math.floor(Math.random() * 6) + 4;
+            const rayLength = size * 0.4;
+            const rayOpacity = Math.random() * 0.2 + 0.1;
+            const rayRandomness = Math.random() * 5;
+            for (let i = 0; i < rayCount; i++) {
+                const angle = (i / rayCount) * Math.PI * 2 + (Math.random() - 0.5) * rayRandomness;
+                const length = rayLength * (1 + (Math.random() - 0.5) * rayRandomness);
+                const endX = centerX + Math.cos(angle) * length;
+                const endY = centerY + Math.sin(angle) * length;
+                const rayGradient = ctx.createLinearGradient(centerX, centerY, endX, endY);
+                rayGradient.addColorStop(0, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, ${rayOpacity})`);
+                rayGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+                ctx.strokeStyle = rayGradient;
+                ctx.lineWidth = Math.random() * 1.5 + 0.5;
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY);
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
             }
-            function hideModal() {
-                modal.style.display = 'none';
-            }
-            closeModalButton.addEventListener('click', hideModal);
-            window.addEventListener('click', (event) => {
-                if (event.target === modal) { hideModal(); }
-            });
+            const coreSize = size * 0.15;
+            const coreGradient = ctx.createRadialGradient(centerX, centerY, 0, centerX, centerY, coreSize);
+            coreGradient.addColorStop(0, `rgba(255, 255, 255, 1)`);
+            coreGradient.addColorStop(0.3, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 1)`);
+            coreGradient.addColorStop(1, `rgba(${rgb.r}, ${rgb.g}, ${rgb.b}, 0)`);
+            ctx.fillStyle = coreGradient;
+            ctx.beginPath();
+            ctx.arc(centerX, centerY, coreSize, 0, Math.PI * 2);
+            ctx.fill();
+            return new THREE.CanvasTexture(canvas);
+        }
+        
+        const starColors = [ new THREE.Color("#FFFFFF"), new THREE.Color("#FEF08A"), new THREE.Color("#A5F3FC"), new THREE.Color("#FBCFE8"), new THREE.Color("#FFD8B1") ];
+        const whiteStarTexture = createStarFlareTexture("#FFFFFF");
+        const galaxyStarVertices = [];
+        const galaxyStarColors = [];
+        const numGalaxyStars = 40000;
+        const galaxyRadius = 800;
+        const galaxyArms = 4;
+        const armTightness = 0.5;
 
-            // --- Event Listeners ---
-            window.addEventListener('mousedown', onMouseDown);
-            window.addEventListener('mouseup', onMouseUp);
-            window.addEventListener('mousemove', onMouseMove);
-            window.addEventListener('wheel', onWheel, { passive: false });
-            window.addEventListener('click', onClick);
-            window.addEventListener('contextmenu', (e) => e.preventDefault()); // Prevent right-click menu
-            window.addEventListener('resize', () => {
-                width = window.innerWidth;
-                height = window.innerHeight;
-                canvas.width = width;
-                canvas.height = height;
-            });
+        for (let i = 0; i < numGalaxyStars; i++) {
+            const pos = new THREE.Vector3();
+            const angle = (i % (numGalaxyStars / galaxyArms)) / (numGalaxyStars / galaxyArms) * Math.PI * 2;
+            const distance = Math.pow(Math.random(), 2) * galaxyRadius;
+            const spiral = angle * armTightness;
+            const armIndex = Math.floor(i / (numGalaxyStars / galaxyArms));
+            const armAngle = (armIndex / galaxyArms) * Math.PI * 2;
+            pos.x = Math.cos(angle + spiral + armAngle) * distance;
+            const y_bulge = (Math.random() - 0.5) * 120 * Math.pow(1 - distance / galaxyRadius, 2);
+            const y_disk = (Math.random() - 0.5) * 20;
+            pos.y = y_bulge + y_disk;
+            pos.z = Math.sin(angle + spiral + armAngle) * distance;
+            galaxyStarVertices.push(pos.x, pos.y, pos.z);
+            const color = starColors[Math.floor(Math.random() * starColors.length)];
+            galaxyStarColors.push(color.r, color.g, color.b);
+        }
 
-            // --- Start ---
-            draw();
+        const galaxyGeometry = new THREE.BufferGeometry();
+        galaxyGeometry.setAttribute('position', new THREE.Float32BufferAttribute(galaxyStarVertices, 3));
+        galaxyGeometry.setAttribute('color', new THREE.Float32BufferAttribute(galaxyStarColors, 3));
+        
+        const galaxyMaterial = new THREE.PointsMaterial({
+            map: whiteStarTexture,
+            size: 6,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true,
+            vertexColors: true
         });
+
+        const galaxyStarfield = new THREE.Points(galaxyGeometry, galaxyMaterial);
+        scene.add(galaxyStarfield);
+
+        const kaminoPosition = new THREE.Vector3(-850, 30, 50);
+        const kaminoStarCount = 2000;
+        const kaminoInnerRadius = 40;
+        const kaminoOuterRadius = 80;
+        const kaminoStarVertices = [];
+        const kaminoStarColors = [];
+        const kaminoColor = new THREE.Color("#A5F3FC");
+
+        for (let i = 0; i < kaminoStarCount; i++) {
+            const dist = THREE.MathUtils.randFloat(kaminoInnerRadius, kaminoOuterRadius);
+            const theta = Math.random() * Math.PI * 2;
+            const phi = Math.acos((Math.random() * 2) - 1);
+            const x = dist * Math.sin(phi) * Math.cos(theta);
+            const y = dist * Math.sin(phi) * Math.sin(theta);
+            const z = dist * Math.cos(phi);
+            kaminoStarVertices.push(x, y, z);
+            kaminoStarColors.push(kaminoColor.r, kaminoColor.g, kaminoColor.b);
+        }
+        
+        const kaminoGeometry = new THREE.BufferGeometry();
+        kaminoGeometry.setAttribute('position', new THREE.Float32BufferAttribute(kaminoStarVertices, 3));
+        kaminoGeometry.setAttribute('color', new THREE.Float32BufferAttribute(kaminoStarColors, 3));
+        
+        const kaminoMaterial = new THREE.PointsMaterial({
+            map: whiteStarTexture,
+            size: 4,
+            transparent: true,
+            blending: THREE.AdditiveBlending,
+            depthWrite: false,
+            sizeAttenuation: true,
+            vertexColors: true
+        });
+
+        const kaminoCluster = new THREE.Points(kaminoGeometry, kaminoMaterial);
+        kaminoCluster.position.copy(kaminoPosition);
+        scene.add(kaminoCluster);
+
+        const coreGeometry = new THREE.SphereGeometry(40, 32, 32);
+        const coreMaterial = new THREE.MeshBasicMaterial({ color: 0xffeab3, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+        const core = new THREE.Mesh(coreGeometry, coreMaterial);
+        scene.add(core);
+        
+        const regionLabels = [];
+        
+        regionData.forEach(region => {
+            if (region.radius > 0) {
+                const geometry = new THREE.RingGeometry(region.radius - 1, region.radius, 128);
+                const material = new THREE.MeshBasicMaterial({ color: 0xffc107, side: THREE.DoubleSide, transparent: true, opacity: 0.4 });
+                const mesh = new THREE.Mesh(geometry, material);
+                mesh.rotation.x = Math.PI / 2;
+                scene.add(mesh);
+            }
+            
+            const text = document.createElement('div');
+            text.className = 'region-label';
+            text.textContent = region.name;
+            const label = new CSS2DObject(text);
+            label.position.copy(region.position);
+            scene.add(label);
+            regionLabels.push(label);
+        });
+
+        const planetMeshes = [];
+        const noise2D = createNoise2D();
+
+        const atmoVertexShader = `
+            varying vec3 vNormal;
+            void main() {
+                vNormal = normalize(normalMatrix * normal);
+                gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+            }
+        `;
+        const atmoFragmentShader = `
+            uniform vec3 uColor;
+            uniform float uOpacity;
+            uniform float uPower;
+            varying vec3 vNormal;
+            void main() {
+                float intensity = pow(0.7 - dot(vNormal, vec3(0.0, 0.0, 1.0)), uPower);
+                gl_FragColor = vec4(uColor, 1.0) * intensity * uOpacity;
+            }
+        `;
+
+        function generatePlanetTexture(design) {
+            const { noiseScale, terrainHeight, waterLevel, landColor, waterColor } = design;
+            const textureCanvas = document.createElement('canvas');
+            textureCanvas.width = 1024;
+            textureCanvas.height = 512;
+            const ctx = textureCanvas.getContext('2d');
+            const width = textureCanvas.width;
+            const height = textureCanvas.height;
+
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const noiseVal = (noise2D(x / noiseScale, y / noiseScale) + 1) / 2; 
+                    const normalizedHeight = noiseVal * 100;
+                    if (normalizedHeight < waterLevel) {
+                        ctx.fillStyle = waterColor;
+                    } else if (normalizedHeight < waterLevel + terrainHeight) {
+                        const landShade = Math.floor(100 + (normalizedHeight - waterLevel) / terrainHeight * 100);
+                        const r = parseInt(landColor.substr(1, 2), 16);
+                        const g = parseInt(landColor.substr(3, 2), 16);
+                        const b = parseInt(landColor.substr(5, 2), 16);
+                        ctx.fillStyle = `rgb(${r*landShade/200}, ${g*landShade/200}, ${b*landShade/200})`;
+                    } else {
+                        ctx.fillStyle = landColor;
+                    }
+                    ctx.fillRect(x, y, 1, 1);
+                }
+            }
+            return new THREE.CanvasTexture(textureCanvas);
+        }
+
+        function createProceduralPlanet(data) {
+            const planetGroup = new THREE.Group();
+            const planetGeometry = new THREE.SphereGeometry(3, 32, 32);
+            const planetTexture = generatePlanetTexture(data.design);
+            const planetMaterial = new THREE.MeshPhongMaterial({ map: planetTexture });
+            const planetMesh = new THREE.Mesh(planetGeometry, planetMaterial);
+            planetMesh.userData = data;
+            planetGroup.add(planetMesh);
+            const atmo1Material = new THREE.ShaderMaterial({
+                vertexShader: atmoVertexShader,
+                fragmentShader: atmoFragmentShader,
+                uniforms: {
+                    uColor: { value: new THREE.Color(data.design.atmo1Color) },
+                    uOpacity: { value: data.design.atmo1Opacity },
+                    uPower: { value: 2.0 }
+                },
+                blending: THREE.AdditiveBlending,
+                side: THREE.BackSide,
+                transparent: true
+            });
+            const atmo1 = new THREE.Mesh(planetGeometry, atmo1Material);
+            atmo1.scale.set(1.0 + data.design.atmo1Size, 1.0 + data.design.atmo1Size, 1.0 + data.design.atmo1Size);
+            planetGroup.add(atmo1);
+            const atmo2Material = atmo1Material.clone();
+            atmo2Material.uniforms.uColor.value = new THREE.Color(data.design.atmo2Color);
+            atmo2Material.uniforms.uOpacity.value = data.design.atmo2Opacity;
+            atmo2Material.uniforms.uPower.value = 4.0;
+            const atmo2 = new THREE.Mesh(planetGeometry, atmo2Material);
+            atmo2.scale.set(1.0 + data.design.atmo2Size, 1.0 + data.design.atmo2Size, 1.0 + data.design.atmo2Size);
+            planetGroup.add(atmo2);
+            return planetGroup;
+        }
+
+        const orbitalSystems = [];
+        planetData.forEach(p => {
+            const solarSystemGroup = new THREE.Object3D();
+            solarSystemGroup.position.copy(p.position);
+            scene.add(solarSystemGroup);
+
+            const planetGroup = createProceduralPlanet(p);
+            
+            const system = {
+                systemGroup: solarSystemGroup,
+                planetGroup: planetGroup,
+                moons: [],
+                planetRotationSpeed: 0.005,
+                angle: Math.random() * Math.PI * 2
+            };
+
+            if (Array.isArray(p.sun)) { // Binary sun system
+                system.binaryPivot = new THREE.Object3D();
+                solarSystemGroup.add(system.binaryPivot);
+                
+                const sun1 = new THREE.Mesh(new THREE.SphereGeometry(p.sun[0].size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun[0].color }));
+                sun1.position.x = p.sun[0].separation / 2;
+                
+                const sun2 = new THREE.Mesh(new THREE.SphereGeometry(p.sun[1].size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun[1].color }));
+                sun2.position.x = -p.sun[1].separation / 2;
+
+                system.binaryPivot.add(sun1);
+                system.binaryPivot.add(sun2);
+                system.binarySpeed = p.sun[0].speed;
+                
+                solarSystemGroup.add(planetGroup);
+                system.planetOrbitSpeed = p.planetOrbit.speed;
+                system.planetOrbitDistance = p.planetOrbit.distance;
+
+            } else { // Single sun
+                const sun = new THREE.Mesh(new THREE.SphereGeometry(p.sun.size, 32, 32), new THREE.MeshBasicMaterial({ color: p.sun.color }));
+                solarSystemGroup.add(sun);
+                solarSystemGroup.add(planetGroup);
+                system.planetOrbitSpeed = p.sun.speed;
+                system.planetOrbitDistance = p.sun.distance;
+            }
+            
+            planetMeshes.push(planetGroup.children[0]);
+
+            p.moons.forEach(m => {
+                const moonGeometry = new THREE.SphereGeometry(m.size, 16, 16);
+                const moonMaterial = new THREE.MeshStandardMaterial({ color: m.color });
+                const moonMesh = new THREE.Mesh(moonGeometry, moonMaterial);
+                planetGroup.add(moonMesh);
+                system.moons.push({ mesh: moonMesh, speed: m.speed, distance: m.distance, angle: Math.random() * Math.PI * 2 });
+            });
+            
+            orbitalSystems.push(system);
+
+            const text = document.createElement('div');
+            text.className = 'label';
+            text.textContent = p.name;
+            const label = new CSS2DObject(text);
+            planetGroup.add(label);
+            label.position.y = 8;
+        });
+
+        const raycaster = new THREE.Raycaster();
+        const mouse = new THREE.Vector2();
+        
+        function onMouseClick(event) {
+            mouse.x = (event.clientX / window.innerWidth) * 2 - 1;
+            mouse.y = -(event.clientY / window.innerHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const intersects = raycaster.intersectObjects(planetMeshes, true);
+            if (intersects.length > 0) {
+                const clickedPlanetData = intersects[0].object.userData;
+                showModal(clickedPlanetData);
+            }
+        }
+        
+        window.addEventListener('click', onMouseClick);
+        
+        const modal = document.getElementById('modal');
+        const closeModalButton = document.getElementById('close-modal');
+
+        function showModal(data) {
+            document.getElementById('planet-name').textContent = data.name;
+            document.getElementById('planet-description').textContent = data.info.description;
+            document.getElementById('planet-landmarks').textContent = data.info.landmarks;
+            document.getElementById('planet-faction').textContent = data.info.faction;
+            document.getElementById('planet-status').textContent = data.info.status;
+            document.getElementById('planet-species').textContent = data.info.species;
+            const exploreButton = document.getElementById('explore-button');
+            const planetNameNoSpaces = data.name.replace(/[\s']/g, '');
+            exploreButton.href = `#`; // Placeholder link
+            modal.style.display = 'block';
+        }
+
+        function hideModal() {
+            modal.style.display = 'none';
+        }
+
+        closeModalButton.addEventListener('click', hideModal);
+        window.addEventListener('click', (event) => {
+            if (event.target === modal) { hideModal(); }
+        });
+
+        const clock = new THREE.Clock();
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = clock.getDelta();
+            controls.update();
+            scene.rotation.y += 0.00005;
+
+            orbitalSystems.forEach(sys => {
+                sys.angle += sys.planetOrbitSpeed;
+                sys.planetGroup.position.x = Math.cos(sys.angle) * sys.planetOrbitDistance;
+                sys.planetGroup.position.z = Math.sin(sys.angle) * sys.planetOrbitDistance;
+                sys.planetGroup.rotation.y += sys.planetRotationSpeed;
+
+                if(sys.binaryPivot){
+                    sys.binaryPivot.rotation.y += sys.binarySpeed;
+                }
+
+                sys.moons.forEach(moonData => {
+                    moonData.angle += moonData.speed;
+                    moonData.mesh.position.x = Math.cos(moonData.angle) * moonData.distance;
+                    moonData.mesh.position.z = Math.sin(moonData.angle) * moonData.distance;
+                });
+            });
+
+            const cameraPosition = new THREE.Vector3();
+            camera.getWorldPosition(cameraPosition);
+
+            regionLabels.forEach(label => {
+                const labelPosition = new THREE.Vector3();
+                label.getWorldPosition(labelPosition);
+                const distance = cameraPosition.distanceTo(labelPosition);
+                const baseSize = 20;
+                const scaleFactor = 3000;
+                let newSize = baseSize * (scaleFactor / distance);
+                newSize = Math.max(8, Math.min(newSize, 30)); 
+                label.element.style.fontSize = `${newSize}px`;
+            });
+
+            renderer.render(scene, camera);
+            labelRenderer.render(scene, camera);
+        }
+                
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            labelRenderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        window.onload = () => {
+            const loadingScreen = document.getElementById('loading-screen');
+            loadingScreen.classList.add('fade-out');
+            setTimeout(() => {
+                loadingScreen.style.display = 'none';
+            }, 1000); 
+            animate();
+        };
     </script>
 </body>
 </html>
