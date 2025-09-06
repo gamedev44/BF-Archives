@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>New Republic Galactic Database</title>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Roboto:wght@400;700&family=VT323&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary-bg-color: #0d0d1a;
@@ -16,6 +16,11 @@
             --border-color: #278ea5;
             --font-main: 'Roboto', sans-serif;
             --font-title: 'Orbitron', sans-serif;
+            --font-glitch: 'VT323', monospace;
+
+            --glitch-color-1: rgba(0, 255, 255, 0.8); /* Cyan */
+            --glitch-color-2: rgba(255, 0, 255, 0.8); /* Magenta */
+            --glitch-color-3: rgba(255, 255, 0, 0.8); /* Yellow */
         }
 
         body {
@@ -101,7 +106,7 @@
             font-family: var(--font-title);
             color: var(--text-alt-color);
             margin: 0;
-         }
+        }
 
         .expandable-container {
             margin-bottom: 1rem;
@@ -152,24 +157,33 @@
             border-top: 1px solid var(--border-color);
         }
 
-        .unit-details-grid {
+        .details-grid {
             display: grid;
             grid-template-columns: 300px 1fr;
             gap: 30px;
             align-items: start;
         }
 
-        .unit-image img {
-            width: 100%;
-            height: 450px;
-            object-fit: cover;
-            object-position: center;
+        .item-image {
+            position: relative;
+            background-size: cover;
+            background-position: center;
             border-radius: 8px;
             border: 3px solid var(--highlight-color);
             box-shadow: 0 0 10px var(--highlight-color);
+            height: 450px;
+            overflow: hidden; /* Important for glitch effect */
         }
 
-        .unit-info h3, .weapon-info h4, .equipment-info h4 {
+        .item-image img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            object-position: center;
+            border-radius: 8px; /* Inner radius to not overlap parent border */
+        }
+
+        .item-info h3, .item-info h4 {
             color: var(--highlight-color);
             font-family: var(--font-title);
             margin-top: 0;
@@ -177,12 +191,12 @@
             font-size: 1.4em;
         }
 
-        .unit-info p, .equipment-info p {
+        .item-info p {
             margin: 0.5em 0;
             color: var(--text-alt-color);
             line-height: 1.6;
         }
-        .unit-info p strong {
+        .item-info p strong {
             color: var(--text-color);
         }
         
@@ -235,12 +249,173 @@
             background-image: linear-gradient(to right, rgba(0, 0, 0, 0), var(--border-color), rgba(0, 0, 0, 0));
             margin: 2em 0;
         }
+
+        /* --- 1:1 GLITCH EFFECT --- */
+        .glitch-effect {
+            border: none;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-family: var(--font-glitch);
+            background-image: linear-gradient( to right,
+                rgb(180, 180, 180) 14.28%,
+                rgb(180, 180, 0) 14.28%, rgb(180, 180, 0) 28.56%,
+                rgb(0, 180, 180) 28.56%, rgb(0, 180, 180) 42.84%,
+                rgb(0, 180, 0) 42.84%, rgb(0, 180, 0) 57.12%,
+                rgb(180, 0, 180) 57.12%, rgb(180, 0, 180) 71.4%,
+                rgb(180, 0, 0) 71.4%, rgb(180, 0, 0) 85.68%,
+                rgb(0, 0, 180) 85.68%
+            );
+        }
+        
+        .glitch-wrapper {
+            position: relative;
+            text-align: center;
+            z-index: 10;
+        }
+
+        .glitch {
+            font-size: 3rem; /* Adjusted for container */
+            font-weight: bold;
+            color: #fff;
+            text-transform: uppercase;
+            position: relative;
+            text-shadow: 0.05em 0 0 var(--glitch-color-1),
+                         -0.025em -0.05em 0 var(--glitch-color-2),
+                         0.025em 0.05em 0 var(--glitch-color-3);
+            animation: glitch-main 1s infinite linear alternate-reverse;
+        }
+
+        .glitch::before,
+        .glitch::after {
+            content: attr(data-text);
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: #0d0d1a; /* Match container bg */
+            overflow: hidden;
+        }
+
+        .glitch::before {
+            left: 2px;
+            text-shadow: -2px 0 var(--glitch-color-2);
+            clip-path: polygon(0 0, 100% 0, 100% 30%, 0 30%);
+            animation: glitch-anim-1 2s infinite linear alternate-reverse;
+        }
+
+        .glitch::after {
+            left: -2px;
+            text-shadow: -2px 0 var(--glitch-color-1), 2px 2px var(--glitch-color-3);
+            clip-path: polygon(0 70%, 100% 70%, 100% 100%, 0 100%);
+            animation: glitch-anim-2 1.5s infinite linear alternate-reverse;
+        }
+
+        .glitch-effect::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 1000 1000' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noiseFilter'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noiseFilter)'/%3E%3C/svg%3E");
+            opacity: 0.2;
+            pointer-events: none;
+            z-index: 1;
+            animation: static-noise 0.2s infinite;
+        }
+        
+        .glitch-effect::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: inherit;
+            z-index: 2;
+            pointer-events: none;
+            animation: glitch-background 3s infinite linear;
+        }
+
+        @keyframes glitch-main {
+            0% { transform: translate(0); }
+            20% { transform: translate(-3px, 3px); }
+            40% { transform: translate(3px, -3px); }
+            60% { transform: translate(-3px, -3px); }
+            80% { transform: translate(3px, 3px); }
+            100% { transform: translate(0); }
+        }
+
+        @keyframes glitch-anim-1 {
+            0% { clip-path: polygon(0 2%, 100% 2%, 100% 5%, 0 5%); }
+            10% { clip-path: polygon(0 15%, 100% 15%, 100% 15%, 0 15%); }
+            20% { clip-path: polygon(0 10%, 100% 10%, 100% 20%, 0 20%); }
+            30% { clip-path: polygon(0 1%, 100% 1%, 100% 2%, 0 2%); }
+            40% { clip-path: polygon(0 33%, 100% 33%, 100% 33%, 0 33%); }
+            50% { clip-path: polygon(0 44%, 100% 44%, 100% 44%, 0 44%); }
+            60% { clip-path: polygon(0 50%, 100% 50%, 100% 20%, 0 20%); }
+            70% { clip-path: polygon(0 70%, 100% 70%, 100% 70%, 0 70%); }
+            80% { clip-path: polygon(0 80%, 100% 80%, 100% 80%, 0 80%); }
+            90% { clip-path: polygon(0 50%, 100% 50%, 100% 55%, 0 55%); }
+            100% { clip-path: polygon(0 25%, 100% 25%, 100% 30%, 0 30%); }
+        }
+
+        @keyframes glitch-anim-2 {
+            0% { clip-path: polygon(0 65%, 100% 65%, 100% 70%, 0 70%); }
+            15% { clip-path: polygon(0 80%, 100% 80%, 100% 40%, 0 40%); }
+            25% { clip-path: polygon(0 45%, 100% 45%, 100% 50%, 0 50%); }
+            40% { clip-path: polygon(0 90%, 100% 90%, 100% 95%, 0 95%); }
+            55% { clip-path: polygon(0 60%, 100% 60%, 100% 80%, 0 80%); }
+            65% { clip-path: polygon(0 20%, 100% 20%, 100% 15%, 0 15%); }
+            80% { clip-path: polygon(0 85%, 100% 85%, 100% 90%, 0 90%); }
+            100% { clip-path: polygon(0 50%, 100% 50%, 100% 55%, 0 55%); }
+        }
+        
+        @keyframes static-noise {
+            0% { transform: translate(0, 0); }
+            10% { transform: translate(10px, -10px); }
+            20% { transform: translate(-10px, 10px); }
+            30% { transform: translate(10px, -10px); }
+            40% { transform: translate(-10px, 10px); }
+            50% { transform: translate(10px, -10px); }
+            60% { transform: translate(-10px, 10px); }
+            70% { transform: translate(10px, -10px); }
+            80% { transform: translate(-10px, 10px); }
+            90% { transform: translate(10px, -10px); }
+            100% { transform: translate(0, 0); }
+        }
+
+        @keyframes glitch-background {
+            0% { transform: translate(0, 0); clip-path: polygon(0 15%, 100% 15%, 100% 18%, 0 18%); }
+            5% { transform: translate(10px, -5px); clip-path: polygon(0 45%, 100% 45%, 100% 48%, 0 48%); }
+            10% { transform: translate(-8px, 3px); clip-path: polygon(0 80%, 100% 80%, 100% 83%, 0 83%); }
+            15% { transform: translate(4px, -7px); clip-path: polygon(0 22%, 100% 22%, 100% 25%, 0 25%); }
+            20% { transform: translate(-12px, 10px); clip-path: polygon(0 95%, 100% 95%, 100% 98%, 0 98%); }
+            25% { transform: translate(6px, -3px); clip-path: polygon(0 60%, 100% 60%, 100% 63%, 0 63%); }
+            30% { transform: translate(-10px, 8px); clip-path: polygon(0 5%, 100% 5%, 100% 8%, 0 8%); }
+            35% { transform: translate(7px, -2px); clip-path: polygon(0 50%, 100% 50%, 100% 53%, 0 53%); }
+            40% { transform: translate(-5px, 6px); clip-path: polygon(0 75%, 100% 75%, 100% 78%, 0 78%); }
+            45% { transform: translate(10px, -9px); clip-path: polygon(0 10%, 100% 10%, 100% 13%, 0 13%); }
+            50% { transform: translate(-3px, 4px); clip-path: polygon(0 88%, 100% 88%, 100% 91%, 0 91%); }
+            55% { transform: translate(8px, -6px); clip-path: polygon(0 38%, 100% 38%, 100% 41%, 0 41%); }
+            60% { transform: translate(-14px, 12px); clip-path: polygon(0 1%, 100% 1%, 100% 4%, 0 4%); }
+            65% { transform: translate(3px, -8px); clip-path: polygon(0 68%, 100% 68%, 100% 71%, 0 71%); }
+            70% { transform: translate(-9px, 5px); clip-path: polygon(0 30%, 100% 30%, 100% 33%, 0 33%); }
+            75% { transform: translate(11px, -4px); clip-path: polygon(0 55%, 100% 55%, 100% 58%, 0 58%); }
+            80% { transform: translate(-6px, 9px); clip-path: polygon(0 92%, 100% 92%, 100% 95%, 0 95%); }
+            85% { transform: translate(4px, -1px); clip-path: polygon(0 26%, 100% 26%, 100% 29%, 0 29%); }
+            90% { transform: translate(-12px, 7px); clip-path: polygon(0 48%, 100% 48%, 100% 51%, 0 51%); }
+            95% { transform: translate(9px, -5px); clip-path: polygon(0 82%, 100% 82%, 100% 85%, 0 85%); }
+            100% { transform: translate(0, 0); clip-path: polygon(0 30%, 100% 30%, 100% 33%, 0 33%); }
+        }
         
         @media (max-width: 768px) {
-            .unit-details-grid {
+            .details-grid {
                 grid-template-columns: 1fr;
             }
-            .unit-image img {
+            .item-image, .item-image img {
                 height: auto;
             }
             .stat-bar-container {
@@ -263,20 +438,18 @@
 <body>
 
 <div class="main-container">
-    <!-- Send the user back to the starmap when they press the back button -->
     <a href="../../../GalacticStarMap.html" class="back-button">&laquo; Return to Galactic Starmap</a>
-
 
     <h1 class="main-title">New Republic Galactic Database</h1>
     <p class="subtitle">Displaying Entry: Naboo System / Planetary Defense Forces</p>
 
-    <!-- Data Structures -->
+    <!-- Data Structures with LOCAL image paths -->
     <script>
     const unitsData = [
         {
             name: "RSF General",
             title: "High Command Security Officer",
-            image: "https://static.wikia.nocookie.net/starwars/images/5/58/HowBoutWeMeetMettHabble.jpg/revision/latest",
+            image: "images/rsf_general.jpg",
             loadout: {
                 primary: "CR-2 Heavy Blaster (Iron Sights; Opt. 4× Scope DLC)",
                 secondary: "ELG-3A Diplomat’s Sporting Target Pistol (Bead Sight; Opt. Diplomat’s Hand Bag DLC)",
@@ -284,14 +457,12 @@
                 lethal: "High-Explosive Grenade",
                 equipment: "Drone Command Uplink, Advanced Squad Shield",
             },
-            attributes: [
-                { name: "Damage", value: 90 }, { name: "Range", value: 85 }, { name: "Mobility", value: 85 }, { name: "Fire Rate", value: 80 }, { name: "Accuracy", value: 90 }, { name: "Control", value: 95 }
-            ]
+            attributes: [ { name: "Damage", value: 90 }, { name: "Range", value: 85 }, { name: "Mobility", value: 85 }, { name: "Fire Rate", value: 80 }, { name: "Accuracy", value: 90 }, { name: "Control", value: 95 } ]
         },
         {
             name: "RSF Chief",
             title: "Command Security Supervisor",
-            image: "https://static.wikia.nocookie.net/starwars/images/d/d2/HatstillnotascoolasCptGloval.jpg/revision/latest",
+            image: "images/rsf_chief.jpg",
             loadout: {
                 primary: "CR-2 Heavy Blaster (Iron Sights; Opt. 2× Scope DLC)",
                 secondary: "ELG-3A Pistol (Bead Sight)",
@@ -299,14 +470,12 @@
                 lethal: "Fragmentation Charge",
                 equipment: "Tactical Shield, Arc Welder",
             },
-            attributes: [
-                { name: "Damage", value: 80 }, { name: "Range", value: 80 }, { name: "Mobility", value: 70 }, { name: "Fire Rate", value: 65 }, { name: "Accuracy", value: 85 }, { name: "Control", value: 90 }
-            ]
+            attributes: [ { name: "Damage", value: 80 }, { name: "Range", value: 80 }, { name: "Mobility", value: 70 }, { name: "Fire Rate", value: 65 }, { name: "Accuracy", value: 85 }, { name: "Control", value: 90 } ]
         },
         {
             name: "RSF Officer",
             title: "Security Operations Team Leader",
-            image: "https://static.wikia.nocookie.net/starwars/images/a/af/Security_Officer.jpg/revision/latest",
+            image: "images/rsf_officer.jpg",
             loadout: {
                 primary: "CR-2 Heavy Blaster (Iron Sights)",
                 secondary: "LPM-01 Pistol (Iron Sights; Opt. DL-1 Scope)",
@@ -314,14 +483,12 @@
                 lethal: "Stun Grenade",
                 equipment: "Squad Shield, Comlink Uplink"
             },
-            attributes: [
-                { name: "Damage", value: 75 }, { name: "Range", value: 70 }, { name: "Mobility", value: 85 }, { name: "Fire Rate", value: 65 }, { name: "Accuracy", value: 75 }, { name: "Control", value: 90 }
-            ]
+            attributes: [ { name: "Damage", value: 75 }, { name: "Range", value: 70 }, { name: "Mobility", value: 85 }, { name: "Fire Rate", value: 65 }, { name: "Accuracy", value: 75 }, { name: "Control", value: 90 } ]
         },
         {
             name: "RSF Guard",
             title: "Standard Security Infantry",
-            image: "https://static.wikia.nocookie.net/starwars/images/c/c4/Carlo_Brandes.png/revision/latest",
+            image: "images/rsf_guard.png",
             loadout: {
                 primary: "E-5 Rifle (Iron Sights; Opt. 3× Scope DLC)",
                 secondary: "S-5 Pistol (Iron Sights)",
@@ -329,14 +496,12 @@
                 lethal: "Suppressive Fire Mode",
                 equipment: "Surveillance Drone, Comlink Uplink",
             },
-            attributes: [
-                { name: "Damage", value: 60 }, { name: "Range", value: 75 }, { name: "Mobility", value: 100 }, { name: "Fire Rate", value: 70 }, { name: "Accuracy", value: 85 }, { name: "Control", value: 80 }
-            ]
+            attributes: [ { name: "Damage", value: 60 }, { name: "Range", value: 75 }, { name: "Mobility", value: 100 }, { name: "Fire Rate", value: 70 }, { name: "Accuracy", value: 85 }, { name: "Control", value: 80 } ]
         },
          {
             name: "Naboo Royal Pilot",
             title: "Starfighter Corps Pilot",
-            image: "https://static.wikia.nocookie.net/starwars/images/a/a0/Naboo_Fighter_Pilot.jpg/revision/latest",
+            image: "images/naboo_pilot.jpg",
             loadout: {
                 primary: "Sidearm Blaster Pistol",
                 secondary: "N/A",
@@ -344,14 +509,12 @@
                 lethal: "Thermal Detonator",
                 equipment: "Field Rations & Survival Kit",
             },
-            attributes: [
-                { name: "Damage", value: 40 }, { name: "Range", value: 35 }, { name: "Mobility", value: 90 }, { name: "Fire Rate", value: 60 }, { name: "Accuracy", value: 65 }, { name: "Control", value: 70 }
-            ]
+            attributes: [ { name: "Damage", value: 40 }, { name: "Range", value: 35 }, { name: "Mobility", value: 90 }, { name: "Fire Rate", value: 60 }, { name: "Accuracy", value: 65 }, { name: "Control", value: 70 } ]
         },
         {
             name: "Captain Panaka",
             title: "Chief of Security",
-            image: "https://i.ibb.co/zy6WFrQ/panaka.png",
+            image: "images/captain_panaka.png",
             loadout: {
                 primary: "E-5 Rifle (Iron Sights; Opt. 3× Scope DLC)",
                 secondary: "ELG-3A Pistol (Bead Sight)",
@@ -359,14 +522,12 @@
                 lethal: "Taser Charge",
                 equipment: "Tactical Shield, Surveillance Drone",
             },
-            attributes: [
-                { name: "Damage", value: 75 }, { name: "Range", value: 85 }, { name: "Mobility", value: 95 }, { name: "Fire Rate", value: 70 }, { name: "Accuracy", value: 90 }, { name: "Control", value: 90 }
-            ]
+            attributes: [ { name: "Damage", value: 75 }, { name: "Range", value: 85 }, { name: "Mobility", value: 95 }, { name: "Fire Rate", value: 70 }, { name: "Accuracy", value: 90 }, { name: "Control", value: 90 } ]
         },
         {
             name: "Captain Typho",
             title: "Head of Security / Padmé's Bodyguard",
-            image: "https://static.wikia.nocookie.net/starwars/images/5/52/Typhofarewell.jpg/revision/latest",
+            image: "images/captain_typho.jpg",
             loadout: {
                 primary: "CR-2 Heavy Blaster",
                 secondary: "LPM-01 Pistol",
@@ -374,14 +535,12 @@
                 lethal: "Frag Grenade",
                 equipment: "Comlink Uplink, Cybernetic Eye",
             },
-            attributes: [
-                { name: "Damage", value: 85 }, { name: "Range", value: 80 }, { name: "Mobility", value: 70 }, { name: "Fire Rate", value: 75 }, { name: "Accuracy", value: 85 }, { name: "Control", value: 80 }
-            ]
+            attributes: [ { name: "Damage", value: 85 }, { name: "Range", value: 80 }, { name: "Mobility", value: 70 }, { name: "Fire Rate", value: 75 }, { name: "Accuracy", value: 85 }, { name: "Control", value: 80 } ]
         },
         {
             name: "Padmé Amidala",
             title: "Queen of Naboo / Senator",
-            image: "https://m.media-amazon.com/images/M/MV5BZTU0YmJkZWEtMDc2Yy00YjI0LWE2MjMtNjZhODBlNDJlZTc5XkEyXkFqcGc@._V1_.jpg",
+            image: "images/padme_amidala.jpg",
             loadout: {
                 primary: "ELG-3A Diplomat’s Sporting Target Pistol",
                 secondary: "Naboo Patrol Droid (Recon & Escort)",
@@ -389,9 +548,7 @@
                 lethal: "None (Diplomatic Protocol)",
                 equipment: "Royal Escort Detail, Backup Security Droid",
             },
-            attributes: [
-                { name: "Damage", value: 50 }, { name: "Range", value: 40 }, { name: "Mobility", value: 80 }, { name: "Fire Rate", value: 50 }, { name: "Accuracy", value: 95 }, { name: "Control", value: 80 }
-            ]
+            attributes: [ { name: "Damage", value: 50 }, { name: "Range", value: 40 }, { name: "Mobility", value: 80 }, { name: "Fire Rate", value: 50 }, { name: "Accuracy", value: 95 }, { name: "Control", value: 80 } ]
         }
     ];
 
@@ -401,15 +558,13 @@
             items: [
                 {
                     name: "CR-2 Heavy Blaster (Iron Sights)",
-                    stats: [
-                        { name: "Damage", value: 90 }, { name: "Range", value: 85 }, { name: "Mobility", value: 85 }, { name: "Fire Rate", value: 80 }, { name: "Accuracy", value: 90 }, { name: "Control", value: 95 }
-                    ]
+                    image: "images/weapon_cr2.jpg",
+                    stats: [ { name: "Damage", value: 90 }, { name: "Range", value: 85 }, { name: "Mobility", value: 85 }, { name: "Fire Rate", value: 80 }, { name: "Accuracy", value: 90 }, { name: "Control", value: 95 } ]
                 },
                 {
                     name: "E-5 Rifle (Iron Sights)",
-                    stats: [
-                        { name: "Damage", value: 60 }, { name: "Range", value: 75 }, { name: "Mobility", value: 100 }, { name: "Fire Rate", value: 70 }, { name: "Accuracy", value: 85 }, { name: "Control", value: 80 }
-                    ]
+                    image: "images/weapon_e5.jpg",
+                    stats: [ { name: "Damage", value: 60 }, { name: "Range", value: 75 }, { name: "Mobility", value: 100 }, { name: "Fire Rate", value: 70 }, { name: "Accuracy", value: 85 }, { name: "Control", value: 80 } ]
                 }
             ]
         },
@@ -418,59 +573,32 @@
             items: [
                 {
                     name: "ELG-3A Diplomat’s Sporting Target Pistol",
-                    stats: [
-                        { name: "Damage", value: 50 }, { name: "Range", value: 40 }, { name: "Mobility", value: 80 }, { name: "Fire Rate", value: 50 }, { name: "Accuracy", value: 95 }, { name: "Control", value: 80 }
-                    ]
+                    image: "images/weapon_elg3a.jpg",
+                    stats: [ { name: "Damage", value: 50 }, { name: "Range", value: 40 }, { name: "Mobility", value: 80 }, { name: "Fire Rate", value: 50 }, { name: "Accuracy", value: 95 }, { name: "Control", value: 80 } ]
                 },
                  {
                     name: "LPM-01 Pistol (Iron Sights)",
-                    stats: [
-                        { name: "Damage", value: 75 }, { name: "Range", value: 70 }, { name: "Mobility", value: 85 }, { name: "Fire Rate", value: 65 }, { name: "Accuracy", value: 75 }, { name: "Control", value: 90 }
-                    ]
+                    image: "images/weapon_lpm01.jpg",
+                    stats: [ { name: "Damage", value: 75 }, { name: "Range", value: 70 }, { name: "Mobility", value: 85 }, { name: "Fire Rate", value: 65 }, { name: "Accuracy", value: 75 }, { name: "Control", value: 90 } ]
                 },
                  {
                     name: "S-5 Pistol (Iron Sights)",
-                    stats: [
-                        { name: "Damage", value: 60 }, { name: "Range", value: 75 }, { name: "Mobility", value: 90 }, { name: "Fire Rate", value: 65 }, { name: "Accuracy", value: 80 }, { name: "Control", value: 85 }
-                    ]
+                    image: "images/weapon_s5.jpg",
+                    stats: [ { name: "Damage", value: 60 }, { name: "Range", value: 75 }, { name: "Mobility", value: 90 }, { name: "Fire Rate", value: 65 }, { name: "Accuracy", value: 80 }, { name: "Control", value: 85 } ]
                 }
             ]
         }
     ];
 
     const equipmentData = [
-        {
-            name: "Thermal Detonator",
-            stats: [ { name: "Damage", value: 85 }, { name: "Utility", value: 75 }, { name: "Mobility Impact", value: 5 } ]
-        },
-        {
-            name: "Thermal Imploder",
-            stats: [ { name: "Damage", value: 98 }, { name: "Utility", value: 87 }, { name: "Mobility Impact", value: 5 } ]
-        },
-        {
-            name: "Advanced Bubble Shield",
-            stats: [ { name: "Armor Bonus", value: 50 }, { name: "Support", value: 50 }, { name: "Utility", value: 60 }, { name: "Mobility Impact", value: 10 } ]
-        },
-        {
-            name: "Tactical Gun Mounted Flak Energy Shield",
-            stats: [ { name: "Armor Bonus", value: 25 }, { name: "Support", value: 25 }, { name: "Utility", value: 50 }, { name: "Mobility Impact", value: 15 } ]
-        },
-        {
-            name: "Arc Welder",
-            stats: [ { name: "Armor Bonus", value: 0 }, { name: "Support", value: 25 }, { name: "Utility", value: 60 }, { name: "Mobility Impact", value: 5 } ]
-        },
-        {
-            name: "Squad Shield",
-            stats: [ { name: "Armor Bonus", value: 50 }, { name: "Support", value: 25 }, { name: "Utility", value: 50 }, { name: "Mobility Impact", value: 10 } ]
-        },
-        {
-            name: "Comlink Uplink",
-            stats: [ { name: "Armor Bonus", value: 0 }, { name: "Support", value: 50 }, { name: "Utility", value: 40 }, { name: "Mobility Impact", value: 1 } ]
-        },
-        {
-            name: "Surveillance Drone",
-            stats: [ { name: "Armor Bonus", value: 0 }, { name: "Support", value: 100 }, { name: "Utility", value: 80 }, { name: "Mobility Impact", value: 10 } ]
-        }
+        { name: "Thermal Detonator", stats: [ { name: "Damage", value: 85 }, { name: "Utility", value: 75 }, { name: "Mobility Impact", value: 5 } ] },
+        { name: "Thermal Imploder", stats: [ { name: "Damage", value: 98 }, { name: "Utility", value: 87 }, { name: "Mobility Impact", value: 5 } ] },
+        { name: "Advanced Bubble Shield", stats: [ { name: "Armor Bonus", value: 50 }, { name: "Support", value: 50 }, { name: "Utility", value: 60 }, { name: "Mobility Impact", value: 10 } ] },
+        { name: "Tactical Gun Mounted Flak Energy Shield", stats: [ { name: "Armor Bonus", value: 25 }, { name: "Support", value: 25 }, { name: "Utility", value: 50 }, { name: "Mobility Impact", value: 15 } ] },
+        { name: "Arc Welder", stats: [ { name: "Armor Bonus", value: 0 }, { name: "Support", value: 25 }, { name: "Utility", value: 60 }, { name: "Mobility Impact", value: 5 } ] },
+        { name: "Squad Shield", stats: [ { name: "Armor Bonus", value: 50 }, { name: "Support", value: 25 }, { name: "Utility", value: 50 }, { name: "Mobility Impact", value: 10 } ] },
+        { name: "Comlink Uplink", stats: [ { name: "Armor Bonus", value: 0 }, { name: "Support", value: 50 }, { name: "Utility", value: 40 }, { name: "Mobility Impact", value: 1 } ] },
+        { name: "Surveillance Drone", stats: [ { name: "Armor Bonus", value: 0 }, { name: "Support", value: 100 }, { name: "Utility", value: 80 }, { name: "Mobility Impact", value: 10 } ] }
     ];
     </script>
     
@@ -485,7 +613,6 @@
     document.addEventListener('DOMContentLoaded', function() {
         const unitsContainer = document.getElementById('units-container');
         const weaponsContainer = document.getElementById('weapons-container');
-        const equipmentContainer = document.getElementById('equipment-container');
         const gunganContainer = document.getElementById('gungan-army-container');
 
         // Function to create stat bars
@@ -517,11 +644,11 @@
                 <div class="expandable-container">
                     <div class="expandable-header">${unit.name} <small style="opacity: 0.7; font-weight: 400; margin-left: 15px;">- ${unit.title}</small></div>
                     <div class="expandable-content">
-                        <div class="unit-details-grid">
-                            <div class="unit-image">
-                                <img src="${unit.image}" alt="${unit.name}" onerror="this.onerror=null;this.src='https://placehold.co/300x450/1a1a2e/e0e0e0?text=Signal+Lost';">
+                        <div class="details-grid">
+                            <div class="item-image">
+                                <img src="${unit.image}" alt="${unit.name}" onerror="this.style.display='none'; const parent = this.parentElement; parent.classList.add('glitch-effect'); parent.innerHTML = '<div class=\\'glitch-wrapper\\'><div class=\\'glitch\\' data-text=\\'SIGNAL LOST\\'>SIGNAL LOST</div></div>';">
                             </div>
-                            <div class="unit-info">
+                            <div class="item-info">
                                 <h3>Loadout</h3>
                                 <p><strong>Primary:</strong> ${unit.loadout.primary}</p>
                                 <p><strong>Secondary:</strong> ${unit.loadout.secondary}</p>
@@ -541,34 +668,37 @@
             unitsContainer.innerHTML += unitHtml;
         });
 
-        // Populate Weapons
-        let weaponsHtml = '<div class="section-title">Standard Issue Arsenal</div>';
+        // Populate Weapons & Equipment
+        let arsenalHtml = '<div class="section-title">Standard Issue Arsenal</div>';
         weaponsData.forEach(cat => {
-            weaponsHtml += `<h3>${cat.category}</h3>`;
+            arsenalHtml += `<h3>${cat.category}</h3>`;
             cat.items.forEach(weapon => {
-                 weaponsHtml += `
+                 arsenalHtml += `
                     <div class="expandable-container">
                         <div class="expandable-header">${weapon.name}</div>
                         <div class="expandable-content">
-                            <div class="weapon-info">
-                                <h4>Specifications</h4>
-                                ${createStatBars(weapon.stats)}
+                             <div class="details-grid">
+                                <div class="item-image">
+                                    <img src="${weapon.image}" alt="${weapon.name}" onerror="this.style.display='none'; const parent = this.parentElement; parent.classList.add('glitch-effect'); parent.innerHTML = '<div class=\\'glitch-wrapper\\'><div class=\\'glitch\\' data-text=\\'SIGNAL LOST\\'>SIGNAL LOST</div></div>';">
+                                </div>
+                                <div class="item-info">
+                                    <h4>Specifications</h4>
+                                    ${createStatBars(weapon.stats)}
+                                </div>
                             </div>
                         </div>
                     </div>
                 `;
             });
         });
-        weaponsContainer.innerHTML = weaponsHtml;
 
-        // Populate Equipment
-        let equipmentHtml = '<h3>Equipment & Gear</h3>';
+        arsenalHtml += '<h3 style="margin-top: 2em;">Equipment & Gear</h3>';
         equipmentData.forEach(item => {
-             equipmentHtml += `
+             arsenalHtml += `
                 <div class="expandable-container">
                     <div class="expandable-header">${item.name}</div>
                     <div class="expandable-content">
-                        <div class="equipment-info">
+                        <div class="item-info">
                             <h4>Specifications</h4>
                             ${createStatBars(item.stats)}
                         </div>
@@ -576,8 +706,7 @@
                 </div>
             `;
         });
-        // Appending to weapons container to keep all gear under the same main section
-        weaponsContainer.innerHTML += equipmentHtml;
+        weaponsContainer.innerHTML = arsenalHtml;
 
         // Gungan Army Placeholder
         gunganContainer.innerHTML = `
@@ -597,7 +726,6 @@
                 if (content.style.display === "block") {
                     content.style.display = "none";
                 } else {
-                    // This logic makes it so only one section can be open at a time.
                     document.querySelectorAll('.expandable-container.expanded').forEach(openContainer => {
                         if(openContainer !== container){
                             openContainer.classList.remove('expanded');
@@ -606,10 +734,8 @@
                     });
 
                     content.style.display = "block";
-                    // Animate stat bars on expand
                     const statFills = content.querySelectorAll('.stat-bar-fill');
                     statFills.forEach(fill => {
-                        // Reset width to 0 before setting the target value to re-trigger animation
                         fill.style.width = '0%';
                         setTimeout(() => {
                            fill.style.width = fill.getAttribute('data-value') + '%';
@@ -623,3 +749,4 @@
 
 </body>
 </html>
+
